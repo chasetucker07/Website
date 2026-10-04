@@ -2236,7 +2236,7 @@ async function hero3D(X,handoff){
     raf=requestAnimationFrame(frame);
   }
   await yieldTask();
-  if(R.compileAsync)await R.compileAsync(scene,cam);   /* parallel shader compile where the GPU supports it */
+  if(R.compileAsync&&R.getContext().getExtension("KHR_parallel_shader_compile"))await R.compileAsync(scene,cam);   /* parallel shader compile where the GPU supports it */
   await yieldTask();
   new IntersectionObserver(function(es){run=es[0].isIntersecting;if(run&&!raf){last=performance.now();raf=requestAnimationFrame(frame);}}).observe(hero);
 }
