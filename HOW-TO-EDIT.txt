@@ -1,0 +1,36 @@
+HOW TO EDIT YOUR SITE
+=====================
+
+QUICK EDITS (text, photos, links) — no code needed
+1. Open your site in a browser on a computer and add  #edit  to the end of the address.
+   Example: https://chasetucker.netlify.app/#edit
+   (Opening index.html straight from this folder works too: open it, then add #edit and press Enter.)
+2. Text: click any heading, paragraph, bullet, or caption and type.
+3. Photos: put the new image file in the "images" folder first, then click the photo
+   on the page and type its name, like  images/my-new-photo.jpg
+4. Links and buttons: hold Shift and click the link, then paste the new address.
+5. Click "Download index.html" in the bar at the bottom.
+6. Replace the old index.html in this folder with the one you downloaded.
+7. Re-upload: log in to Netlify, open your site, go to the "Deploys" tab, and drag
+   this whole folder onto the upload area. Your live site updates in a few seconds.
+
+Anyone who adds #edit to your address only changes their own screen. Nothing on
+your live site changes unless you upload a new file.
+
+BIGGER CHANGES (adding a new project, a new section, new animations)
+Open index.html in a text editor such as VS Code. Each section is labeled with a
+comment like  <!-- Plate: knee -->  or  <!-- LEADERSHIP -->. To add a new
+leadership role, copy one  <article class="role"> ... </article>  block, paste it
+below, and change the words.
+
+The small italic captions under each animation are in the  data-stages='...'
+line inside each section. Change the words between the quotes; leave the numbers.
+
+FILES
+index.html      the whole site
+images/         every photo the site uses
+
+PHOTO VIEWER
+Every project photo opens full size when clicked (arrow keys or swipe to move through
+that section's photos, Esc or swipe down to close). New photos you add get this
+automatically. It switches off while you're in #edit mode so clicks still swap photos.
