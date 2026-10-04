@@ -26,6 +26,13 @@ below, and change the words.
 The small italic captions under each animation are in the  data-stages='...'
 line inside each section. Change the words between the quotes; leave the numbers.
 
+3D ANIMATIONS
+Each research animation is a 3D scene, written in index.html as sceneSpine, sceneRat,
+sceneOsc, scenePfas, sceneKnee, sceneWrist and sceneScalpel. The 3D code (three.js) and
+the smooth scrolling (GSAP, Lenis) load from cdn.jsdelivr.net, so the site needs an
+internet connection to show them. The line drawing inside each <svg> is the backup: it
+shows if a browser can't run 3D, and also when you open index.html offline.
+
 FILES
 index.html      the whole site
 images/         every photo the site uses
