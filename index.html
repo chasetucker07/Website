@@ -127,6 +127,7 @@ html.lenis{scroll-behavior:auto}
 .beat li{position:relative;padding:.55rem 0 .55rem 1.4rem;border-top:1px solid var(--rule);color:#C9D0DF;font-size:.98rem}
 .beat li::before{content:"";position:absolute;left:0;top:1.15rem;width:7px;height:7px;border-radius:50%;background:var(--gfap);box-shadow:0 0 8px var(--gfap)}
 .beat.cells figure{margin:0}
+.plate.long .beats{padding-bottom:70vh}   /* short text, so give the animation a longer runway */
 .micro{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
 .micro img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px}
 figcaption{font:italic 500 1rem var(--serif);color:var(--dim);margin-top:.7rem}
@@ -161,6 +162,8 @@ figcaption{font:italic 500 1rem var(--serif);color:var(--dim);margin-top:.7rem}
   .figrun .hint{display:block}
   .beats{padding:2vh 0 8vh;border-top:1px solid var(--rule)}
   .beat{min-height:0;padding:1.4rem 0}
+  .plate.long .figrun{height:280vh;height:280svh}
+  .plate.long .beats{padding-bottom:8vh}
 }
 
 /* SVG styling */
@@ -288,7 +291,7 @@ main img.zoomable:focus-visible{outline:2px solid var(--gfap);outline-offset:3px
   <canvas id="net" aria-hidden="true"></canvas>
   <div class="hero-copy">
     <h1 class="load">Chase<br>Tucker</h1>
-    <p class="lede load d1">Biomedical engineering student at the University of Florida, working in neural repair research and on medical device design teams.</p>
+    <p class="lede load d1">Biomedical engineering student at the University of Florida, doing research in biomimetic materials and neural engineering, and working on medical device design teams.</p>
     <div class="actions load d2">
       <a class="btn solid" href="#research">See my research</a>
       <a class="btn" href="https://media.base44.com/files/public/699507bec4f2726ea790dd8d/1fc4d5503_ChaseTucker-Resume.pdf" target="_blank" rel="noopener">Résumé (PDF)</a>
@@ -523,7 +526,7 @@ main img.zoomable:focus-visible{outline:2px solid var(--gfap);outline-offset:3px
 </section>
 
 <!-- Plate: PFAS -->
-<section class="plate" aria-labelledby="bowden-h">
+<section class="plate long" aria-labelledby="bowden-h">
   <div class="fig">
     <svg class="specimen" id="fig-pfas" viewBox="0 0 400 300" role="img" aria-label="Structure of perfluorooctanesulfonic acid (PFOS) above an illustrative mass spectrometry chromatogram">
       <defs><filter id="gl-p" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
@@ -769,10 +772,6 @@ main img.zoomable:focus-visible{outline:2px solid var(--gfap);outline-offset:3px
         <figure><img loading="lazy" src="images/heat-staking-press.jpg" alt="Kensol-Franklin heat staking press"></figure>
         <figure><img loading="lazy" class="paper" src="images/heat-staking-drawing.jpg" alt="Drawing of the scalpel handle with the heat-staked blade area highlighted"></figure>
       </div></div>
-      <div class="proj"><h4>Syringe pad printing fixture for Stryker</h4><div class="gal">
-        <figure><img loading="lazy" src="images/stryker-pad-print-fixture.jpg" alt="Pad printing fixture holding a syringe"></figure>
-        <figure><img loading="lazy" class="paper" src="images/stryker-fixture-cad.jpg" alt="Pad printing fixture CAD"></figure>
-      </div></div>
     </div>
     <div class="beat">
       <div class="proj"><h4>More from the production floor</h4><div class="gal three">
@@ -791,9 +790,18 @@ main img.zoomable:focus-visible{outline:2px solid var(--gfap);outline-offset:3px
   <article class="role">
     <div><h3>Advanced Myographic Technologies</h3><div class="when">SOFi acoustic myography system</div></div>
     <div><p>Acoustic myography reads muscle function from the sound of contracting fibers. It flags abnormalities using three measures: how many fibers are recruited during movement, how long they stay active, and how quickly they fire repeatedly.</p>
+      <p>I modeled components of the system in 3D and printed them on a Mutoh printer. I also fabricated custom airtight gaskets that seal the enclosure of a drug-testing unit.</p>
       <div class="gal" style="margin-top:1.2rem;max-width:40rem">
         <figure><img loading="lazy" class="contain" src="images/sofi-system.jpg" alt="SOFi M2 system components"></figure>
         <figure><img loading="lazy" class="paper" src="images/sofi-unit.jpg" alt="SOFi wireless sensor unit"></figure>
+      </div></div>
+  </article>
+  <article class="role">
+    <div><h3>Pad printing fixture for Stryker</h3><div class="when">Artemis Plastics</div></div>
+    <div><p>A fixture that holds a syringe perfectly still for pad printing, using snaps, spring-loaded components, and levers.</p>
+      <div class="gal" style="margin-top:1.2rem;max-width:40rem">
+        <figure><img loading="lazy" src="images/stryker-pad-print-fixture.jpg" alt="Pad printing fixture holding a syringe"></figure>
+        <figure><img loading="lazy" class="paper" src="images/stryker-fixture-cad.jpg" alt="Pad printing fixture CAD"></figure>
       </div></div>
   </article>
 </div>
@@ -1406,7 +1414,7 @@ function sceneSpine(T,K,o){
     var a=P.apply(null,c[0]),b=P.apply(null,c[1]),d=P.apply(null,c[2]);bf.bezierCurveTo(a[0],a[1],b[0],b[1],d[0],d[1]);});
   var gg=new T.ExtrudeGeometry(bf,{depth:10,bevelEnabled:false,curveSegments:24,steps:1});
   gg.translate(0,.05,-5); gg.rotateX(Math.PI/2);
-  var greyM=mat(TISSUE,{uCol:{value:C(0x1d6b52)},uRim:{value:C(0x6fd8b0,.6)},uStri:{value:0},uCarve:{value:1}});
+  var greyM=mat(TISSUE,{uCol:{value:C(0x1d6b52)},uRim:{value:C(0x6fd8b0,.38)},uStri:{value:0},uCarve:{value:1}});
   cord.add(new T.Mesh(gg,greyM));
 
   /* tubes merged into one draw call, with per-tube attributes */
@@ -1435,7 +1443,7 @@ function sceneSpine(T,K,o){
   var oldM=mat("void main(){float front=5.3-uOp*10.8;float vis=smoothstep(front-.5,front,vP.y);\n"+
     "float e=cav(1.08);float cut=mix(1.,smoothstep(1.,1.22,e),uInj);float bulb=uInj*(1.-uHeal)*exp(-pow((e-1.26)/.09,2.))*vCut;\n"+
     "float ph=fract((5.-vP.y)*.085-uT*.3+vR);float pulse=uSig*smoothstep(.018,0.,abs(ph-.5))*(vCut>.5&&vP.y<0.?0.:1.);\n"+
-    "vec3 col=uCol+vec3(.55,1.,.8)*pulse*1.6+vec3(1.,.35,.8)*bulb*.9;\n"+
+    "vec3 col=uCol+vec3(.55,1.,.8)*pulse*.9+vec3(1.,.35,.8)*bulb*.9;\n"+
     "gl_FragColor=vec4(col,clamp((.34+pulse)*vis*cut*ends()+bulb*vis*.55,0.,1.5));}",{uCol:{value:C(0xc4d0f0,.5)}});
   cord.add(new T.Mesh(tubes(old,.012,140),oldM));
 
@@ -1451,9 +1459,9 @@ function sceneSpine(T,K,o){
   /* 5. hydrogel: a translucent volume that fills the cavity from the needle tip */
   var gelG=cg.clone(); gelG.scale(1.03,1.02,1.04);
   var gelM=mat("void main(){float fr=fres(2.);float n=sin(vP.x*7.+uT*.5)*sin(vP.y*5.-uT*.35)*sin(vP.z*6.+uT*.45);\n"+
-    "vec3 col=mix(uCol,uRim,fr);gl_FragColor=vec4(col,uOp*(.045+fr*.42+n*.03));}",{uCol:{value:C(0x1d8f63,.7)},uRim:{value:C(0x7dffd0,.75)}});
+    "vec3 col=mix(uCol,uRim,fr);gl_FragColor=vec4(col,uOp*(.045+fr*.42+n*.03));}",{uCol:{value:C(0x1d8f63,.45)},uRim:{value:C(0x7dffd0,.48)}});
   var gel=new T.Mesh(gelG,gelM); cord.add(gel);
-  var gelCore=new T.Mesh(new T.SphereGeometry(1,40,30),mat("void main(){float fr=1.-fres(1.2);gl_FragColor=vec4(uCol,uOp*fr*.10);}",{uCol:{value:C(0x34e89e)}}));
+  var gelCore=new T.Mesh(new T.SphereGeometry(1,40,30),mat("void main(){float fr=1.-fres(1.2);gl_FragColor=vec4(uCol,uOp*fr*.05);}",{uCol:{value:C(0x34e89e)}}));
   gelCore.scale.copy(CAV).multiplyScalar(.7); gel.add(gelCore);
   var tip=new T.Vector3(.52,.62,.32);
 
@@ -1467,7 +1475,7 @@ function sceneSpine(T,K,o){
   }
   var neoM=mat("void main(){float g=uOp*1.4-vR*.4;float vis=smoothstep(g,g-.015,vUv.x);float tip=exp(-pow((vUv.x-g)/.035,2.))*step(g,1.02)*smoothstep(0.,.04,g);\n"+
     "float ph=fract((5.-vP.y)*.085-uT*.3+vR);float pulse=uSig*smoothstep(.018,0.,abs(ph-.5));\n"+
-    "vec3 col=uCol+vec3(.8,1.,.9)*(tip*3.+pulse*1.8);gl_FragColor=vec4(col,(vis*(.9+pulse)+tip*1.2));}",{uCol:{value:C(0x34e89e,1.15)}});
+    "vec3 col=uCol+vec3(.8,1.,.9)*(tip*1.5+pulse*1.);gl_FragColor=vec4(col,(vis*(.9+pulse)+tip*1.2));}",{uCol:{value:C(0x34e89e,.68)}});
   cord.add(new T.Mesh(tubes(neo,.014,120),neoM));
 
   /* instanced glowing cells */
@@ -1500,10 +1508,10 @@ function sceneSpine(T,K,o){
   var ndir=new T.Vector3(.84,.58,.5).normalize(); ndl.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),ndir); cord.add(ndl);
   var ndlMats=[steel,glass,load.material];
   var dust=K.dust(scene,PH?60:110,R);
-  var S={scene:scene,cam:cam,bloom:[.36,.28,.85],dof:[.0016,.0065],focus:11};
+  var S={scene:scene,cam:cam,bloom:[.28,.26,.88],dof:[.0016,.0065],focus:11};
   S.update=function(p,t){
     var intro=sg2(p,0,.16);
-    shellM.uniforms.uOp.value=out3(sg2(p,0,.12)); greyM.uniforms.uOp.value=out3(sg2(p,.04,.16))*.42;
+    shellM.uniforms.uOp.value=out3(sg2(p,0,.12)); greyM.uniforms.uOp.value=out3(sg2(p,.04,.16))*.3;
     oldM.uniforms.uOp.value=io2(intro); dust.op(out3(sg2(p,0,.2)));
     var inj=io2(sg2(p,.24,.32)), heal=io2(sg2(p,.62,.86)), sig=io2(sg2(p,.86,.95));
     [shellM,greyM,oldM,neoM].forEach(function(m){m.uniforms.uInj.value=inj;m.uniforms.uHeal.value=heal;m.uniforms.uSig.value=sig;});
@@ -1902,16 +1910,15 @@ function sceneKnee(T,K,o,X){
     layers.forEach(function(l){K.op(l,sc>0?1:0);K.plane(l,NY,Y,on);});
     K.op(grid,sc>0?1:0); K.plane(grid,NY,Y,on);
     sheet.position.y=Y; K.op(sheet,on);
-    /* class layers separate in depth so each mask reads on its own */
-    var ex=io(sg(p,.72,.92));
-    layers.forEach(function(l,j){l.position.z=zoff[j]*ex;});
-    base.children.forEach(function(m){m.material.uniforms.uOp.value=1-.4*ex;});
+    /* masks stay seated on the section; the outlines step back so the classes read */
+    var ex=io(sg(p,.72,.86));
+    base.children.forEach(function(m){m.material.uniforms.uOp.value=1-.35*ex;});
     var lo=out(sg(p,.72,.84));
     leaders.forEach(function(l){K.op(l,lo);});
     S.labels.forEach(function(Lb){Lb.w.copy(Lb.a);Lb.w.z+=Lb.layer.position.z;Lb.o=lo;});
     dust.op(out(sg(p,0,.2)));
-    var az=.1+.5*ex+.08*sg(p,0,.7)+(RM?0:.02*Math.sin(t*.27)), el=.08+.12*ex;
-    var d=K.fit(cam,3.1,2.9); K.orbit(cam,tgt,d,az,el); S.focus=d; dust.focus(d);
+    var az=.12+(RM?0:.015*Math.sin(t*.27)), el=.08;   /* a steady, near front-on view */
+    var d=K.fit(cam,3.2,3.45);   /* room for the side labels */ K.orbit(cam,tgt,d,az,el); S.focus=d; dust.focus(d);
   };
   return S;
 }
@@ -1934,8 +1941,8 @@ function sceneWrist(T,K,o){
   var rad=tube(150,218,45,32,BONE[0],BONE[1],FADEZ), radM=tube(150,218,28,18,[0x3a4466,.6],[0x8a94ac,.5],FADEZ);
   var uln=tube(270,220,32,27,BONE[0],BONE[1],FADEZ), ulnM=tube(270,220,18,15,[0x3a4466,.6],[0x8a94ac,.5],FADEZ);
   [[128,160,6],[152,150,5],[246,150,5],[270,158,6],[292,172,5]].forEach(function(q){tube(q[0],q[1],q[2],q[2],[0x26355e,.8],[0x8a94ac,.7],FADEZ).userData.inner=true;});
-  var nerve=tube(205,158,9,9,[0x1d6b52,.8],[0x34e89e,.7],FADEZ);
-  [[202,155],[208,157],[204,162]].forEach(function(q){tube(q[0],q[1],2,2,[0x34e89e,.9],[0x7dffd0,1],FADEZ,false).userData.inner=true;});
+  var nerve=tube(205,158,9,9,[0x1d6b52,.6],[0x34e89e,.45],FADEZ);
+  [[202,155],[208,157],[204,162]].forEach(function(q){tube(q[0],q[1],2,2,[0x34e89e,.5],[0x7dffd0,.55],FADEZ,false).userData.inner=true;});
   var artery=tube(185,110,9,9,[0xff5cc8,.9],[0xff9be0,1.3],K.LIT), vein=tube(216,106,6,6,[0x5b8cff,.7],[0x9fb6ff,1],K.LIT);
 
   /* strap and sensor module */
@@ -1945,28 +1952,28 @@ function sceneWrist(T,K,o){
   var mod=new T.Group(); arm.add(mod);
   var boxG=new T.BoxGeometry(100*s,.2,1.1); boxG.translate(0,0,.85); mod.add(K.solid(boxG,[0x2a3550,1],[0xc8d4f2,.85],[0xc8d4f2,.5]));
   mod.position.copy(P(200,64));
-  var led=new T.Mesh(new T.SphereGeometry(.05,16,12),K.mat(K.CELL,{uCol:{value:C(0x34e89e,2.2)}})); led.position.copy(P(170,78,.9)); arm.add(led);
+  var led=new T.Mesh(new T.SphereGeometry(.05,16,12),K.mat(K.CELL,{uCol:{value:C(0x34e89e,1.1)}})); led.position.copy(P(170,78,.9)); arm.add(led);
   var pd=K.solid(new T.BoxGeometry(12*s,5*s,.16),[0x5b8cff,1.2],[0x9fb6ff,1.4]); pd.position.copy(P(229,77,.9)); arm.add(pd);
 
   /* light: photons scatter from the LED through tissue, some return to the photodiode */
   var paths=[];
   for(var i=0;i<9;i++){var z=.9+(R()*2-1)*.18, dpt=.35+R()*.35, mx=(R()*2-1)*.14;
     paths.push({pts:[P(170,82,z),P(172,96+dpt*20,z).add(V3(mx,-dpt*.4,0)),P(200,100+dpt*40,z).add(V3(mx,-dpt*.3,0)),P(226,96+dpt*20,z).add(V3(mx,-dpt*.4,0)),P(229,82,z)],rnd:R()});}
-  var light=new T.Mesh(K.tubes(paths,.006,60,4),K.mat("void main(){float d=step(fract(vUv.x*7.-uT*1.4+vR*3.),.38);gl_FragColor=vec4(uCol*(1.+d),uOp*(.18+d*.8));}",{uCol:{value:C(0x34e89e,1.3)}}));
+  var light=new T.Mesh(K.tubes(paths,.006,60,4),K.mat("void main(){float d=step(fract(vUv.x*7.-uT*1.4+vR*3.),.38);gl_FragColor=vec4(uCol*(.8+d*.5),uOp*(.1+d*.5));}",{uCol:{value:C(0x34e89e,.7)}}));
   arm.add(light);
 
   /* waveform panel: glass card in front of the section with a live trace */
   var panel=new T.Group(); scene.add(panel);
-  var PW=340*s, PHt=150*s, PX=-170*s, PY=-(330-190)*s-PHt, PZ=ZF+.05;
+  var PW=300*s, PHt=112*s, PX=-150*s, PY=-(312-190)*s-PHt, PZ=ZF+.05;
   var pg=new T.PlaneGeometry(PW,PHt); pg.translate(PX+PW/2,PY+PHt/2,PZ);
   panel.add(new T.Mesh(pg,K.mat("void main(){gl_FragColor=vec4(uCol,uOp*.025);}",{uCol:{value:C(0x5b8cff,.6)}})));
   var fr=[V3(PX,PY,PZ),V3(PX+PW,PY,PZ),V3(PX+PW,PY+PHt,PZ),V3(PX,PY+PHt,PZ),V3(PX,PY,PZ)]; panel.add(K.line(fr,0x8a94ac,.45));
-  [368,405,442].forEach(function(yy){var y=-(yy-190)*s,seg=[];for(var x=0;x<PW;x+=.09)seg.push(V3(PX+x,y,PZ),V3(PX+Math.min(x+.03,PW),y,PZ));
+  [340,368,396].forEach(function(yy){var y=-(yy-190)*s,seg=[];for(var x=0;x<PW;x+=.09)seg.push(V3(PX+x,y,PZ),V3(PX+Math.min(x+.03,PW),y,PZ));
     panel.add(new T.LineSegments(new T.BufferGeometry().setFromPoints(seg),K.lineMat(0x8a94ac,.25)));});
   var NW=160, wg=new T.BufferGeometry(), wp=new Float32Array((NW+1)*2*3), wu=new Float32Array((NW+1)*2*2), wi=[];
   for(i=0;i<=NW;i++){wu[i*4]=i/NW;wu[i*4+1]=0;wu[i*4+2]=i/NW;wu[i*4+3]=1;if(i){var k=i*2;wi.push(k-2,k-1,k,k-1,k+1,k);}}
   wg.setAttribute("position",new T.BufferAttribute(wp,3)); wg.setAttribute("uv",new T.BufferAttribute(wu,2)); wg.setIndex(wi);
-  var wave=new T.Mesh(wg,K.mat("uniform float uDraw;void main(){float vis=step(vUv.x,uDraw);float c=1.-abs(vUv.y-.5)*2.;gl_FragColor=vec4(uCol*(1.+c),uOp*vis*smoothstep(0.,.6,c));}",{uCol:{value:C(0x34e89e,1.4)},uDraw:{value:0}}));
+  var wave=new T.Mesh(wg,K.mat("uniform float uDraw;void main(){float vis=step(vUv.x,uDraw);float c=1.-abs(vUv.y-.5)*2.;gl_FragColor=vec4(uCol*(.7+.5*c),uOp*vis*smoothstep(0.,.6,c));}",{uCol:{value:C(0x34e89e,.85)},uDraw:{value:0}}));
   panel.add(wave);
   var HR=72, per=60/HR, wx=new Float32Array(NW+1), wy=new Float32Array(NW+1);
   function ppg(t){var ph=((t%per)+per)%per/per;return Math.exp(-Math.pow((ph-.16)/.07,2))+.42*Math.exp(-Math.pow((ph-.44)/.09,2))+.05*Math.exp(-Math.pow((ph-.33)/.03,2));}
@@ -1976,7 +1983,7 @@ function sceneWrist(T,K,o){
     {text:"radius",w:P(150,268,ZF)},{text:"ulna",w:P(270,264,ZF)},
     {text:"LED",w:P(170,46,.9),ay:-100},{text:"photodiode",w:P(229,46,.9),ay:-100},
     {text:"pulse waveform",w:V3(PX,PY+PHt+.08,PZ),ax:0,ay:-100},{text:"72 bpm",w:V3(PX+PW,PY+PHt+.08,PZ),ax:-100,ay:-100}]};
-  var tgt=new T.Vector3(), TA=V3(0,.05,0), TB=V3(0,-.85,.8);
+  var tgt=new T.Vector3(), TA=V3(0,.05,0), TB=V3(0,-.6,1.2);
 
   S.update=function(p,t){
     K.op(skin,out(sg(p,0,.2))); K.op(fascia,out(sg(p,.05,.22))*.8);
@@ -1997,9 +2004,9 @@ function sceneWrist(T,K,o){
     pa.needsUpdate=true; wave.material.uniforms.uDraw.value=io(sg(p,.5,.68));
     dust.op(out(sg(p,0,.2)));
     /* camera: face on to the section, round to show its depth, then settle to read the trace */
-    var a=io(sg(p,.18,.42)), b=io(sg(p,.44,.6));
+    var a=io(sg(p,.18,.42)), b=io(sg(p,.42,.52));
     tgt.lerpVectors(TA,TB,b);
-    var az=.08+.62*a-.42*b+(RM?0:.02*Math.sin(t*.3)), el=.12+.22*a-.18*b, hh=2.1+.9*b, hw=2.4;
+    var az=.08+.62*a-.7*b+(RM?0:.012*Math.sin(t*.3)*(1-b)), el=.12+.22*a-.3*b, hh=2.1+.85*b, hw=2.4+.55*b;   /* ends straight on so the trace reads flat */
     var d=K.fit(cam,hh,hw); K.orbit(cam,tgt,d,az,el); S.focus=cam.position.distanceTo(V3(0,0,ZF)); dust.focus(S.focus);
   };
   return S;
@@ -2007,74 +2014,87 @@ function sceneWrist(T,K,o){
 
 function sceneScalpel(T,K,o,X){
   var R=K.rng(61), C=K.C, sg=K.sg, io=K.io, out=K.out, V3=function(x,y,z){return new T.Vector3(x,y,z||0);};
-  var scene=new T.Scene(), cam=new T.PerspectiveCamera(28,1,.05,80), rig=new T.Group(); scene.add(rig);
+  var scene=new T.Scene(), cam=new T.PerspectiveCamera(28,1,.05,80);
+  /* everything lies flat on the bench: drawing coordinates in the bench plane, local z is height */
+  var bench=new T.Group(); bench.rotation.x=-Math.PI/2; scene.add(bench);
   var s=.016; function P(x,y,z){return V3((x-200)*s,-(y-200)*s,z||0);}
+  function W(x,y,z){return V3((x-200)*s,z||0,(y-200)*s);}   /* the same point in world space */
   var ldr=new X.SVG();
-  function ext(d,dep,bev,ox,oy){var sh=ldr.parse('<svg xmlns="http://www.w3.org/2000/svg"><path d="'+d+'"/></svg>').paths[0].toShapes(true);
-    var g=new T.ExtrudeGeometry(sh,{depth:dep,bevelEnabled:bev>0,bevelThickness:bev,bevelSize:bev*.6,bevelSegments:3,curveSegments:24});
+  function shapeOf(d){return ldr.parse('<svg xmlns="http://www.w3.org/2000/svg"><path d="'+d+'"/></svg>').paths[0].toShapes(true)[0];}
+  function ext(sh,dep,bev,ox,oy){var g=new T.ExtrudeGeometry(sh,{depth:dep,bevelEnabled:bev>0,bevelThickness:bev,bevelSize:bev*.6,bevelSegments:3,curveSegments:24});
     g.translate(-(ox||0),-(oy||0),-dep/2);g.scale(s,-s,s);g.computeVertexNormals();return g;}
-  var INK=[[0x2a3550,1],[0xc8d4f2,.85]], STEEL=[[0x7d8aa8,.9],[0xe6eaf2,1.3]];
+  var INK=[[0x2a3550,1],[0xc8d4f2,.85]], STEEL=[[0x7d8aa8,.9],[0xe6eaf2,1.3]], Z0=-13*s;   /* bench surface */
 
-  /* handle, the plastic stem the blade sits on, and the blade tray */
-  var handleG=ext("M70,200 L252,203 L252,215 L70,220 C60,220 58,200 70,200 Z",18,4,200,200);
-  var handle=K.solid(handleG,INK[0],INK[1],[0xc8d4f2,.4]); rig.add(handle);
-  var rid=[];[[120,203,208],[135,203.3,206.5],[150,203.6,208.5],[165,203.9,207],[180,204.2,209],[195,204.5,207.5],[210,204.8,209.5],[225,205.1,208]].forEach(function(q){rid.push(P(q[0],q[1],.2),P(q[0],q[2],.2));});
-  var ridges=new T.LineSegments(new T.BufferGeometry().setFromPoints(rid),K.lineMat(0x8a94ac,.6)); rig.add(ridges);
-  var stemG=new T.BoxGeometry(50*s,8*s,12*s); var stem=K.solid(stemG,INK[0],INK[1],[0xc8d4f2,.45]); stem.position.copy(P(277,209)); rig.add(stem);
-  var trayG=new T.BoxGeometry(118*s,8*s,70*s); var tray=K.solid(trayG,[0x26355e,.8],[0x8a94ac,.6],[0x8a94ac,.35]); tray.position.copy(P(341,305,-.1)); rig.add(tray);
-  var bladeD="M-56,-8 L8,-10 C40,-10 54,-2 58,7 C40,10 0,10 -56,9 Z", bladeG=ext(bladeD,1.6,0,0,0);
-  function mkBlade(){var g=new T.Group();g.add(K.solid(bladeG,STEEL[0],STEEL[1],[0xe6eaf2,.7,20]));
-    g.add(K.line([P(158,200,.02),P(184,200,.02)].map(function(v){return v.sub(P(200,200));}),0x8a94ac,.7));return g;}
-  var blade=mkBlade(); rig.add(blade);
-  var spares=[mkBlade(),mkBlade()]; spares.forEach(function(b,j){b.position.copy(P(324+j*36,298,-.35+j*.3));b.rotation.x=-1.35;rig.add(b);});
+  /* handle, the stem with two raised plastic posts, and the blade tray */
+  var handle=K.solid(ext(shapeOf("M70,200 L252,203 L252,215 L70,220 C60,220 58,200 70,200 Z"),18,4,200,200),INK[0],INK[1],[0xc8d4f2,.4]); bench.add(handle);
+  var rid=[];[[120,203,208],[135,203.3,206.5],[150,203.6,208.5],[165,203.9,207],[180,204.2,209],[195,204.5,207.5],[210,204.8,209.5],[225,205.1,208]].forEach(function(q){rid.push(P(q[0],q[1],13*s),P(q[0],q[2],13*s));});
+  var ridges=new T.LineSegments(new T.BufferGeometry().setFromPoints(rid),K.lineMat(0x8a94ac,.6)); bench.add(ridges);
+  var stem=K.solid(new T.BoxGeometry(50*s,9*s,12*s),INK[0],INK[1],[0xc8d4f2,.45]); stem.position.copy(P(277,209)); bench.add(stem);
+  var TOP=6*s, PX=[271,287];
+  var posts=PX.map(function(x){var g=new T.CylinderGeometry(2.1*s,2.1*s,13*s,18);g.rotateX(Math.PI/2);g.translate(0,0,6.5*s);
+    var m=K.solid(g,[0xc4d0f0,.6],[0xe6eaf2,1.1]);m.position.copy(P(x,209,TOP));bench.add(m);return m;});
+  var tray=K.solid(new T.BoxGeometry(118*s,62*s,8*s),[0x26355e,.8],[0x8a94ac,.6],[0x8a94ac,.35]); tray.position.copy(P(345,300,Z0+4*s)); bench.add(tray);
 
-  /* the magnetic assembly pen, with its field */
+  /* the blade, with the slot that drops over the posts */
+  var bs=shapeOf("M-56,-8 L8,-10 C40,-10 54,-2 58,7 C40,10 0,10 -56,9 Z"), hole=new T.Path();
+  hole.moveTo(-41.4,-2.6);hole.lineTo(-16.6,-2.6);hole.absarc(-16.6,0,2.6,-Math.PI/2,Math.PI/2,false);hole.lineTo(-41.4,2.6);hole.absarc(-41.4,0,2.6,Math.PI/2,Math.PI*1.5,false);
+  bs.holes.push(hole);
+  var bladeG=ext(bs,1.6,0,0,0);
+  function mkBlade(){return K.solid(bladeG,STEEL[0],STEEL[1],[0xe6eaf2,.7,20]);}
+  var blade=mkBlade(); bench.add(blade);
+  var spares=[mkBlade(),mkBlade()]; spares.forEach(function(b,j){b.position.copy(P(318+j*40,312-j*14,Z0+8.8*s));b.rotation.z=.08-j*.12;bench.add(b);});
+  var BT=P(328,288,Z0+8.8*s), BS=P(308,209,TOP+.8*s), LIFT=1.25;   /* tray, seated */
+
+  /* the magnetic assembly pen (world space, upright), with its field */
   var prof=[[0,-1],[2.5,0],[5,24],[9,24],[9,34],[8,34],[8,140],[11,140],[13,158],[0,158]].map(function(q){return new T.Vector2(q[0]*s,q[1]*s);});
-  var pen=new T.Group(); rig.add(pen);
-  var penG=new T.LatheGeometry(prof,40); pen.add(K.solid(penG,INK[0],INK[1],[0xc8d4f2,.4,30]));
-  var mag=new T.Mesh(new T.CylinderGeometry(2.5*s,2.5*s,3*s,16),K.mat(K.CELL,{uCol:{value:C(0xff5cc8,1.8)}})); mag.position.y=1.5*s; pen.add(mag);
+  var pen=new T.Group(); scene.add(pen);
+  pen.add(K.solid(new T.LatheGeometry(prof,40),INK[0],INK[1],[0xc8d4f2,.4,30]));
+  var mag=new T.Mesh(new T.CylinderGeometry(2.5*s,2.5*s,3*s,16),K.mat(K.CELL,{uCol:{value:C(0xff5cc8,1.5)}})); mag.position.y=1.5*s; pen.add(mag);
   for(var r=0;r<3;r++)[[9,8],[12,13]].forEach(function(q,j){var pts=[];for(var a=0;a<=24;a++){var u=a/24*Math.PI;pts.push(V3(Math.cos(u)*q[0]*s,-(Math.sin(u)*q[1]-1)*s,0));}
-    var l=K.line(pts,0x34e89e,j?.45:.8);l.rotation.y=r*Math.PI/3;pen.add(l);});
+    var l=K.line(pts,0x34e89e,j?.3:.5);l.rotation.y=r*Math.PI/3;pen.add(l);});
 
-  /* heat staking press, the two posts that melt, the heat */
-  var press=new T.Group(); rig.add(press);
+  /* heat staking press (world space, straight down onto the posts) and the heat */
+  var press=new T.Group(); scene.add(press);
   var pb=new T.BoxGeometry(50*s,22*s,30*s); pb.translate(0,11*s,0); press.add(K.solid(pb,STEEL[0],STEEL[1],[0xe6eaf2,.5]));
   var rod=new T.CylinderGeometry(3*s,3*s,6,12); rod.translate(0,22*s+3,0); press.add(K.solid(rod,STEEL[0],STEEL[1]));
-  var posts=[268,284].map(function(x){var g=new T.CylinderGeometry(2.6*s,2.6*s,13*s,16);g.translate(0,6.5*s,0);var m=K.solid(g,[0xc4d0f0,.6],[0xe6eaf2,1.1]);m.position.copy(P(x+2.5,205));rig.add(m);return m;});
-  var heat=new T.Mesh(new T.SphereGeometry(1,24,16),K.mat(K.CELL,{uCol:{value:C(0xff7a6a,1.6)}})); heat.scale.set(32*s,16*s,14*s); heat.position.copy(P(282,203)); rig.add(heat);
+  var heat=new T.Mesh(new T.SphereGeometry(1,24,16),K.mat(K.CELL,{uCol:{value:C(0xff7a6a,1.4)}})); heat.scale.set(26*s,9*s,10*s); heat.position.copy(P(279,209,TOP+7*s)); bench.add(heat);
 
-  /* Lumohs LED at the blade junction and the light it throws along the blade */
-  var led=new T.Mesh(new T.SphereGeometry(4*s,20,14),K.mat(K.CELL,{uCol:{value:C(0xffffff,2)}})); led.position.copy(P(247,209,.12)); rig.add(led);
-  var coneG=new T.ConeGeometry(28*s,150*s,40,1,true); coneG.rotateZ(Math.PI/2); coneG.translate(75*s,0,0);
-  var cone=new T.Mesh(coneG,K.mat("uniform float uLen;void main(){float f=1.-clamp(vP.x/uLen,0.,1.);float fr=1.-fres(1.2);gl_FragColor=vec4(uCol,uOp*pow(f,1.6)*(.25+.5*fr));}",{uCol:{value:C(0xffffff)},uLen:{value:150*s}}));
-  cone.position.copy(led.position); cone.rotation.z=-.1; rig.add(cone);
-  var CYC=[C(0xffffff,1.6),C(0xff5c5c,1.6),C(0x5b8cff,1.8)];
+  /* Lumohs LED at the blade junction, its beam along the blade, and the pool of light on the bench */
+  var led=new T.Mesh(new T.SphereGeometry(3.5*s,20,14),K.mat(K.CELL,{uCol:{value:C(0xffffff,2)}})); led.position.copy(P(250,209,TOP+3*s)); bench.add(led);
+  var coneG=new T.ConeGeometry(30*s,160*s,40,1,true); coneG.rotateZ(Math.PI/2); coneG.translate(80*s,0,0);
+  var cone=new T.Mesh(coneG,K.mat("uniform float uLen;void main(){float f=1.-clamp(vP.x/uLen,0.,1.);float fr=1.-fres(1.2);gl_FragColor=vec4(uCol,uOp*pow(f,1.6)*(.25+.5*fr));}",{uCol:{value:C(0xffffff)},uLen:{value:160*s}}));
+  cone.position.copy(led.position); cone.rotation.y=.16; bench.add(cone);
+  var pool=new T.Mesh(new T.CircleGeometry(1,48),K.mat("void main(){float d=length(vP.xy);gl_FragColor=vec4(uCol,uOp*pow(max(1.-d,0.),2.)*.5);}",{uCol:{value:C(0xffffff)}}));
+  pool.scale.set(95*s,40*s,1); pool.position.copy(P(392,209,Z0)); bench.add(pool);
+  var CYC=[C(0xffffff,1.4),C(0xff5c5c,1.4),C(0x5b8cff,1.6)];
 
   var dust=K.dust(scene,PH?40:80,R,[8,5,-9,2]);
-  var S={scene:scene,cam:cam,bloom:[.42,.32,.8],dof:[.0018,.007],focus:12,labels:[{text:"blade tray",w:P(290,326,.6),ax:0,ay:0}]};
-  var tgt=new T.Vector3(), TA=P(232,226), TB=P(282,206), TC=P(262,214), B0=new T.Vector3();
+  var S={scene:scene,cam:cam,bloom:[.4,.32,.82],dof:[.0018,.007],focus:12,labels:[{text:"blade tray",w:W(290,338,Z0),ax:0,ay:0}]};
+  var tgt=new T.Vector3(), TA=W(258,240), TB=W(280,209), TC=W(300,215), BP=new T.Vector3(), WP=new T.Vector3();
 
   S.update=function(p,t){
     K.op(handle,out(sg(p,0,.12))); K.op(ridges,out(sg(p,.04,.14))); K.op(stem,out(sg(p,.02,.12))); K.op(tray,out(sg(p,0,.08)));
     spares.forEach(function(b){K.op(b,out(sg(p,0,.08)));});
     S.labels[0].o=out(sg(p,0,.06))*(1-sg(p,.2,.26));
-    var t1=io(sg(p,.04,.18)),t2=io(sg(p,.2,.34)),t3=io(sg(p,.36,.46)),t4=io(sg(p,.48,.58));
-    var bx=344-26*t3, by=292-84*t2;
-    blade.position.copy(P(bx,by,.02*t3)); blade.rotation.x=-1.35*(1-t2); K.op(blade,out(sg(p,0,.05)));
-    var py=t1<1?(-40+(283+40)*t1):(by-9-260*t4);
-    pen.position.copy(P(bx,py,.0)); K.op(pen,sg(p,.03,.06)*(1-sg(p,.56,.6)));
-    var dn=io(sg(p,.6,.66)), up=io(sg(p,.7,.76)), mlt=sg(p,.64,.68);
-    press.position.copy(P(281,60+(132+3*mlt)*dn-135*up)); K.op(press,sg(p,.56,.6)*(1-sg(p,.76,.8)));
-    posts.forEach(function(m){m.scale.set(1+1.2*mlt,1-.23*mlt,1+.5*mlt);K.op(m,out(sg(p,.02,.12)));});
-    K.op(heat,.45*sg(p,.65,.67)*(1-sg(p,.72,.82)));
+    /* pen comes down onto the blade; the blade rises, travels over the handle, and drops onto the posts */
+    var t1=io(sg(p,.04,.18)), up=io(sg(p,.2,.27)), mv=io(sg(p,.25,.34)), dn=io(sg(p,.36,.46)), t4=io(sg(p,.48,.58));
+    BP.lerpVectors(BT,BS,mv); BP.z=BT.z+(LIFT-BT.z)*up+(BS.z-LIFT)*dn;
+    blade.position.copy(BP); blade.rotation.z=.12*(1-mv); K.op(blade,out(sg(p,0,.05)));
+    WP.copy(BP); bench.localToWorld(WP); WP.y+=.8*s;
+    pen.position.set(WP.x,WP.y+(1-t1)*4.2+t4*4.2,WP.z); K.op(pen,sg(p,.03,.06)*(1-sg(p,.56,.6)));
+    /* heat staking: the press melts the posts into caps over the blade */
+    var pd=io(sg(p,.6,.66)), pu=io(sg(p,.7,.76)), mlt=sg(p,.64,.68), topZ=TOP+13*s*(1-.55*mlt);
+    posts.forEach(function(m){m.scale.set(1+1.3*mlt,1+.5*mlt,1-.55*mlt);K.op(m,out(sg(p,.02,.12)));});
+    var pc=W(279,209); press.position.set(pc.x,3.2+(topZ-3.2)*pd+3.2*pu,pc.z); K.op(press,sg(p,.56,.6)*(1-sg(p,.76,.8)));
+    K.op(heat,.42*sg(p,.65,.67)*(1-sg(p,.72,.82)));
     var lv=out(sg(p,.8,.88)), ci=RM?0:Math.floor(t/1.2)%3;
-    led.material.uniforms.uCol.value.copy(CYC[ci]); cone.material.uniforms.uCol.value.copy(CYC[ci]).multiplyScalar(.6);
-    K.op(led,lv); K.op(cone,lv*.55);
+    led.material.uniforms.uCol.value.copy(CYC[ci]); cone.material.uniforms.uCol.value.copy(CYC[ci]).multiplyScalar(.6); pool.material.uniforms.uCol.value.copy(CYC[ci]);
+    K.op(led,lv); K.op(cone,lv*.5); K.op(pool,lv);
     dust.op(out(sg(p,0,.2)));
-    /* camera: the bench at three-quarters, in close for the staking, out to the lit scalpel */
-    var a=io(sg(p,.5,.62)), b=io(sg(p,.76,.86));
+    /* camera: the bench from above at three-quarters, in close for the staking, out to the lit scalpel */
+    var a=io(sg(p,.3,.42)), b=io(sg(p,.76,.86));   /* in close as the blade drops onto the posts */
     tgt.lerpVectors(TA,TB,a).lerp(TC,b);
-    var hw=3.1-1.4*a+1.35*b, hh=2.1-.9*a+.6*b, az=.34+.18*a+.1*b+(RM?0:.02*Math.sin(t*.3)), el=.32+.12*a-.08*b;
+    var hw=3.2-1.9*a+1.6*b, hh=2-1.1*a+.9*b, az=.28+.12*a-.06*b+(RM?0:.02*Math.sin(t*.3)), el=.8-.08*a-.22*b;
     var d=K.fit(cam,hh,hw); K.orbit(cam,tgt,d,az,el); S.focus=d; dust.focus(d);
   };
   return S;
