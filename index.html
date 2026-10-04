@@ -14,6 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"}}</script>
 <style>
 :root{
   --field:#03060D;
@@ -158,6 +159,16 @@ figcaption{font:italic 500 1rem var(--serif);color:var(--dim);margin-top:.7rem}
 @keyframes flow{to{stroke-dashoffset:-16}}
 .ping{fill:none;stroke:var(--iba);stroke-width:1.2;transform-box:fill-box;transform-origin:center;animation:ping 1.8s ease-out infinite}
 @keyframes ping{0%{transform:scale(.6);opacity:.9}100%{transform:scale(2.6);opacity:0}}
+
+/* 3D spinal cord plate (WebGL); the SVG underneath stays as the fallback */
+.gl{position:absolute;inset:0;z-index:0;opacity:0;transition:opacity 1.2s cubic-bezier(.2,.7,.2,1);pointer-events:none;
+  --cap:12%;--fy:linear-gradient(transparent,#000 9%,#000 calc(100% - var(--cap) - 90px),transparent calc(100% - var(--cap) - 6px));
+  --fx:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent);
+  -webkit-mask-image:var(--fy),var(--fx);-webkit-mask-composite:source-in;mask-image:var(--fy),var(--fx);mask-composite:intersect}
+.gl canvas{display:block;width:100%;height:100%}
+.fig .stage,.fig .hint{position:relative;z-index:1}
+.fig.is-3d .gl{opacity:1}
+.fig.is-3d .specimen{opacity:0;transition:opacity .8s}
 
 /* leadership */
 .roles{padding:0 6vw;max-width:78rem}
@@ -1076,7 +1087,7 @@ var plates=[].slice.call(document.querySelectorAll(".plate")).map(function(pl){
 function apply(o,p){
   o.draws.forEach(function(d){var t=ease(seg(p,d.a,d.b));var v=(1-t).toFixed(4);d.t.forEach(function(el){el.style.strokeDashoffset=v;});});
   o.fades.forEach(function(f){var v=1;if(f.fi)v*=seg(p,f.fi[0],f.fi[1]);if(f.fo)v*=1-seg(p,f.fo[0],f.fo[1]);f.el.style.opacity=v.toFixed(3);});
-  var c=custom[o.svg.id]; if(c)c(p,o.svg);
+  if(o.gl){o.gl.set(p);}else{var c=custom[o.svg.id]; if(c)c(p,o.svg);}
   if(o.stages){var i=0;o.stages.forEach(function(s,j){if(p>=s[0])i=j;});if(i!==o.last){o.last=i;o.st.textContent=o.stages[i][1];}}
 }
 var PHONE=window.matchMedia("(max-width:860px)");
@@ -1109,6 +1120,283 @@ window.addEventListener("scroll",req,{passive:true});
 window.addEventListener("resize",req);
 plates.forEach(function(o){apply(o,RM?1:0);o.last=-1;});
 onScroll();
+
+/* ---------- spinal cord plate in 3D (three.js, loaded only when the plate gets close) ---------- */
+(function(){
+  var o=plates.filter(function(x){return x.svg.id==="fig-spine";})[0]; if(!o) return;
+  var probe=document.createElement("canvas"), ok=false;
+  try{ok=!!(window.WebGL2RenderingContext&&probe.getContext("webgl2"));}catch(e){}
+  if(!ok) return;                       /* no WebGL2: the SVG plate stays */
+  var io=new IntersectionObserver(function(es){
+    if(!es[0].isIntersecting) return; io.disconnect();
+    buildSpine3D(o).catch(function(err){console.warn("3D plate unavailable, using the drawing instead.",err);});
+  },{rootMargin:"90% 0px"});
+  io.observe(o.pl);
+})();
+
+async function buildSpine3D(o){
+  var M=await Promise.all([import("three"),import("three/addons/postprocessing/EffectComposer.js"),import("three/addons/postprocessing/RenderPass.js"),
+    import("three/addons/postprocessing/UnrealBloomPass.js"),import("three/addons/postprocessing/BokehPass.js"),
+    import("three/addons/postprocessing/OutputPass.js"),import("three/addons/postprocessing/ShaderPass.js")]);
+  var T=M[0], fig=o.svg.closest(".fig");
+  var PH=window.matchMedia("(max-width:860px)").matches||window.matchMedia("(pointer:coarse)").matches;
+  var tier=PH?1:2;                      /* 2: bloom + depth of field + MSAA, 1: bloom at half res */
+  var wrap=document.createElement("div"); wrap.className="gl";
+  wrap.setAttribute("role","img"); wrap.setAttribute("aria-label",o.svg.getAttribute("aria-label"));
+  fig.insertBefore(wrap,fig.firstChild);
+  var renderer=new T.WebGLRenderer({antialias:false,alpha:false,powerPreference:"high-performance"});
+  renderer.setClearColor(0x000000,1);
+  renderer.toneMapping=T.ACESFilmicToneMapping; renderer.toneMappingExposure=1.05;
+  wrap.appendChild(renderer.domElement);
+
+  var scene=new T.Scene(), cam=new T.PerspectiveCamera(30,1,.1,60);
+  var cord=new T.Group(); scene.add(cord);
+  var C=function(h,k){var c=new T.Color(h);if(k)c.multiplyScalar(k);return c;};
+  var CAV=new T.Vector3(1.0,1.42,.74);   /* injury cavity radii */
+  var U={t:{value:0}};
+
+  /* shared vertex shader: object-space position, view normal, view vector; instancing aware */
+  var VS="attribute float aR;attribute float aCut;varying vec3 vP;varying vec3 vN;varying vec3 vV;varying float vR;varying float vCut;varying vec2 vUv;\n"+
+    "void main(){vec4 lp=vec4(position,1.);vec3 nn=normal;\n#ifdef USE_INSTANCING\nlp=instanceMatrix*lp;nn=mat3(instanceMatrix)*nn;\n#endif\n"+
+    "vP=lp.xyz;vR=aR;vCut=aCut;vUv=uv;vec4 mv=modelViewMatrix*lp;vV=-mv.xyz;vN=normalize(normalMatrix*nn);gl_Position=projectionMatrix*mv;}";
+  var HEAD="uniform float uT;uniform float uOp;uniform vec3 uCol;uniform vec3 uRim;uniform vec3 uCav;uniform float uInj;uniform float uHeal;uniform float uSig;\n"+
+    "varying vec3 vP;varying vec3 vN;varying vec3 vV;varying float vR;varying float vCut;varying vec2 vUv;\n"+
+    "float fres(float k){return pow(1.-abs(dot(normalize(vN),normalize(vV))),k);}\n"+
+    "float cav(float s){vec3 q=vP/(uCav*s);return dot(q,q);}\n"+
+    "float ends(){return smoothstep(5.,3.1,abs(vP.y));}\n";
+  function mat(fs,u,o2){
+    var un={uT:U.t,uOp:{value:0},uCol:{value:C(0xffffff)},uRim:{value:C(0xffffff)},uCav:{value:CAV},uInj:{value:0},uHeal:{value:0},uSig:{value:0}};
+    for(var k in u)un[k]=u[k];
+    return new T.ShaderMaterial(Object.assign({uniforms:un,vertexShader:VS,fragmentShader:HEAD+fs,transparent:true,depthWrite:false,blending:T.AdditiveBlending,side:T.DoubleSide},o2||{}));
+  }
+
+  /* tissue: fresnel shell with fibre striations, tinted where the injury is */
+  var TISSUE="uniform float uStri;uniform float uCarve;void main(){float fr=fres(2.3);vec3 n=normalize(vN);\n"+
+    "float lit=.5+.6*max(dot(n,normalize(vec3(.45,.75,.55))),0.)+.35*pow(max(dot(n,normalize(vec3(-.8,-.1,-.4))),0.),2.);\n"+
+    "float st=1.-uStri*(.5+.5*sin(atan(vP.z,vP.x)*64.+vP.y*.6));float e=cav(1.);\n"+
+    "float carve=mix(1.,smoothstep(.82,1.12,e),uCarve*uInj);float hurt=uInj*(1.-uHeal)*exp(-max(e-1.,0.)*1.6);\n"+
+    "vec3 col=mix(uCol,uRim,fr)*lit;col=mix(col,vec3(1.,.3,.75),clamp(hurt*.55,0.,1.));\n"+
+    "gl_FragColor=vec4(col,(.03+fr*.9)*uOp*ends()*st*carve);}";
+
+  /* 1. cord shell: oval section, a ventral fissure, gentle segmental swelling */
+  var sg=new T.CylinderGeometry(1,1,10,160,90,true), pa=sg.attributes.position;
+  for(var i=0;i<pa.count;i++){var x=pa.getX(i),y=pa.getY(i),z=pa.getZ(i),th=Math.atan2(z,x);
+    var dv=Math.atan2(Math.sin(th-Math.PI/2),Math.cos(th-Math.PI/2)), dd=Math.atan2(Math.sin(th+Math.PI/2),Math.cos(th+Math.PI/2));
+    var r=1+.022*Math.sin(y*1.9+.4)+.012*Math.sin(th*3+y*1.3)-.085*Math.exp(-Math.pow(dv/.11,2))-.03*Math.exp(-Math.pow(dd/.07,2));
+    pa.setXYZ(i,x*1.16*r,y,z*.93*r);}
+  sg.computeVertexNormals();
+  var shellM=mat(TISSUE,{uCol:{value:C(0x2a3f78)},uRim:{value:C(0xb9c8ff,.9)},uStri:{value:.35},uCarve:{value:0}});
+  cord.add(new T.Mesh(sg,shellM));
+
+  /* 2. grey matter: the butterfly from the transverse inset, extruded along the cord */
+  var bf=new T.Shape(), s=.0265;
+  function P(x,y){return [x*s,-y*s];}
+  var bz=[[-6,-4],[[-10,-20],[-22,-34],[-26,-30]],[[-30,-26],[-20,-14],[-18,-4]],[[-26,2],[-30,14],[-24,22]],[[-18,28],[-10,14],[-6,6]],"L",[6,6],
+    [[10,14],[18,28],[24,22]],[[30,14],[26,2],[18,-4]],[[20,-14],[30,-26],[26,-30]],[[22,-34],[10,-20],[6,-4]]];
+  bf.moveTo.apply(bf,P(-6,-4));
+  bz.slice(1).forEach(function(c,j){
+    if(c==="L"){var q=P.apply(null,bz[j+2]);bf.lineTo(q[0],q[1]);return;}
+    if(typeof c[0]==="number")return;
+    var a=P.apply(null,c[0]),b=P.apply(null,c[1]),d=P.apply(null,c[2]);bf.bezierCurveTo(a[0],a[1],b[0],b[1],d[0],d[1]);});
+  var gg=new T.ExtrudeGeometry(bf,{depth:10,bevelEnabled:false,curveSegments:24,steps:1});
+  gg.translate(0,.05,-5); gg.rotateX(Math.PI/2);
+  var greyM=mat(TISSUE,{uCol:{value:C(0x1d6b52)},uRim:{value:C(0x6fd8b0,.6)},uStri:{value:0},uCarve:{value:1}});
+  cord.add(new T.Mesh(gg,greyM));
+
+  /* tubes merged into one draw call, with per-tube attributes */
+  function tubes(list,rad,segs){
+    var pos=[],nor=[],uvs=[],idx=[],ar=[],ac=[],off=0;
+    list.forEach(function(t){
+      var g=new T.TubeGeometry(new T.CatmullRomCurve3(t.pts),segs,t.r||rad,5,false), n=g.attributes.position.count;
+      pos.push.apply(pos,g.attributes.position.array);nor.push.apply(nor,g.attributes.normal.array);uvs.push.apply(uvs,g.attributes.uv.array);
+      for(var k=0;k<n;k++){ar.push(t.rnd);ac.push(t.cut?1:0);}
+      g.index.array.forEach(function(v){idx.push(v+off);});off+=n;g.dispose();});
+    var b=new T.BufferGeometry();
+    b.setAttribute("position",new T.Float32BufferAttribute(pos,3));b.setAttribute("normal",new T.Float32BufferAttribute(nor,3));
+    b.setAttribute("uv",new T.Float32BufferAttribute(uvs,2));b.setAttribute("aR",new T.Float32BufferAttribute(ar,1));
+    b.setAttribute("aCut",new T.Float32BufferAttribute(ac,1));b.setIndex(idx);return b;
+  }
+  var R=(function(seed){return function(){seed=(seed*16807)%2147483647;return (seed-1)/2147483646;};})(7);
+
+  /* 3. white-matter axons running the length of the cord; the ones through the cavity get cut */
+  var old=[];
+  for(var a=0;a<44;a++){
+    var th=a/44*Math.PI*2+R()*.09, rr=.66+R()*.28, x0=Math.cos(th)*rr*1.16, z0=Math.sin(th)*rr*.93, ph=R()*6, pts=[];
+    for(var y=-5;y<=5.001;y+=.5)pts.push(new T.Vector3(x0+.018*Math.sin(y*1.1+ph),y,z0+.015*Math.cos(y*.9+ph)));
+    var q=x0/(CAV.x*1.08), w=z0/(CAV.z*1.08);
+    old.push({pts:pts,rnd:R(),cut:q*q+w*w<1,r:.0042+R()*.0035});
+  }
+  var oldM=mat("void main(){float front=5.3-uOp*10.8;float vis=smoothstep(front-.5,front,vP.y);\n"+
+    "float e=cav(1.08);float cut=mix(1.,smoothstep(1.,1.22,e),uInj);float bulb=uInj*(1.-uHeal)*exp(-pow((e-1.26)/.09,2.))*vCut;\n"+
+    "float ph=fract((5.-vP.y)*.085-uT*.3+vR);float pulse=uSig*smoothstep(.018,0.,abs(ph-.5))*(vCut>.5&&vP.y<0.?0.:1.);\n"+
+    "vec3 col=uCol+vec3(.55,1.,.8)*pulse*1.6+vec3(1.,.35,.8)*bulb*.9;\n"+
+    "gl_FragColor=vec4(col,clamp((.34+pulse)*vis*cut*ends()+bulb*vis*.55,0.,1.5));}",{uCol:{value:C(0xc4d0f0,.5)}});
+  cord.add(new T.Mesh(tubes(old,.012,140),oldM));
+
+  /* 4. the cavity: an irregular pink rim */
+  var cg=new T.SphereGeometry(1,72,54), cp=cg.attributes.position;
+  function bump(x,y,z,k){return .5*Math.sin(3.1*x+1.7)*Math.sin(2.7*y+.4)*Math.sin(3.3*z+2.1)+.25*Math.sin(6.3*x+2*y+k)*Math.sin(5.1*z-1.3*y);}
+  for(i=0;i<cp.count;i++){var vx=cp.getX(i),vy=cp.getY(i),vz=cp.getZ(i),f=1+.14*bump(vx,vy,vz,0);cp.setXYZ(i,vx*CAV.x*f,vy*CAV.y*f,vz*CAV.z*f);}
+  cg.computeVertexNormals();
+  var lesM=mat("void main(){float fr=fres(1.6);float rim=.5+.5*sin(vP.y*22.+atan(vP.z,vP.x)*6.);\n"+
+    "gl_FragColor=vec4(mix(uCol,uRim,fr),(.02+fr*.7)*(.7+.3*rim)*uOp);}",{uCol:{value:C(0x6a1d55)},uRim:{value:C(0xff5cc8,.85)}});
+  cord.add(new T.Mesh(cg,lesM));
+
+  /* 5. hydrogel: a translucent volume that fills the cavity from the needle tip */
+  var gelG=cg.clone(); gelG.scale(1.03,1.02,1.04);
+  var gelM=mat("void main(){float fr=fres(2.);float n=sin(vP.x*7.+uT*.5)*sin(vP.y*5.-uT*.35)*sin(vP.z*6.+uT*.45);\n"+
+    "vec3 col=mix(uCol,uRim,fr);gl_FragColor=vec4(col,uOp*(.045+fr*.42+n*.03));}",{uCol:{value:C(0x1d8f63,.7)},uRim:{value:C(0x7dffd0,.75)}});
+  var gel=new T.Mesh(gelG,gelM); cord.add(gel);
+  var gelCore=new T.Mesh(new T.SphereGeometry(1,40,30),mat("void main(){float fr=1.-fres(1.2);gl_FragColor=vec4(uCol,uOp*fr*.10);}",{uCol:{value:C(0x34e89e)}}));
+  gelCore.scale.copy(CAV).multiplyScalar(.7); gel.add(gelCore);
+  var tip=new T.Vector3(.52,.62,.32);
+
+  /* 6. regrowing axons: GFAP green, grown along the Schwann cell columns */
+  var cols=[], neo=[];
+  for(var k=0;k<15;k++){
+    var cx=(R()*2-1)*.72, cz=(R()*2-1)*.48; if((cx*cx)/(.75*.75)+(cz*cz)/(.5*.5)>1){k--;continue;}
+    cols.push([cx,cz]); var pts2=[], ph2=R()*6;
+    for(var yy=1.95;yy>=-1.951;yy-=.26)pts2.push(new T.Vector3(cx+.06*Math.sin(yy*2.2+ph2),yy,cz+.05*Math.cos(yy*1.8+ph2)));
+    neo.push({pts:pts2,rnd:R(),r:.0065});
+  }
+  var neoM=mat("void main(){float g=uOp*1.4-vR*.4;float vis=smoothstep(g,g-.015,vUv.x);float tip=exp(-pow((vUv.x-g)/.035,2.))*step(g,1.02)*smoothstep(0.,.04,g);\n"+
+    "float ph=fract((5.-vP.y)*.085-uT*.3+vR);float pulse=uSig*smoothstep(.018,0.,abs(ph-.5));\n"+
+    "vec3 col=uCol+vec3(.8,1.,.9)*(tip*3.+pulse*1.8);gl_FragColor=vec4(col,(vis*(.9+pulse)+tip*1.2));}",{uCol:{value:C(0x34e89e,1.15)}});
+  cord.add(new T.Mesh(tubes(neo,.014,120),neoM));
+
+  /* instanced glowing cells */
+  var CELL="void main(){float fr=fres(1.5);gl_FragColor=vec4(uCol*(.55+fr*1.5),uOp*(.45+fr*.55));}";
+  var dum=new T.Object3D();
+
+  /* 7. microglia gathering at the rim */
+  var NG=34, glia=new T.InstancedMesh(new T.IcosahedronGeometry(1,2),mat(CELL,{uCol:{value:C(0xff5cc8,.9)}}),NG), gl0=[];
+  for(i=0;i<NG;i++){var u1=R()*2-1,t1=R()*Math.PI*2,sq=Math.sqrt(1-u1*u1),k2=1.02+R()*.2;
+    gl0.push({d:new T.Vector3(sq*Math.cos(t1)*CAV.x*k2,u1*CAV.y*k2,sq*Math.sin(t1)*CAV.z*k2),s:.02+R()*.018,r:R(),sx:.8+R()*.6});}
+  cord.add(glia);
+
+  /* 8. Schwann cells: drift in from the gel, then line up into columns */
+  var NS=60, sch=new T.InstancedMesh(new T.SphereGeometry(1,12,10),mat(CELL,{uCol:{value:C(0x5b8cff,1.5)}}),NS), sc0=[];
+  for(i=0;i<NS;i++){var c2=cols[i%cols.length], yy2=-1.6+((i/cols.length|0)+R()*.6)*.82;
+    sc0.push({to:new T.Vector3(c2[0]+.06*Math.sin(yy2*2.2),yy2,c2[1]),from:new T.Vector3((R()*2-1)*.8,(R()*2-1)*1.2,(R()*2-1)*.55),
+      rot:new T.Euler(R()*3,R()*3,R()*3),r:R()});}
+  cord.add(sch);
+
+  /* 9. needle and syringe, drawn in the same fresnel line language */
+  var GLASS="void main(){float fr=fres(2.6);gl_FragColor=vec4(mix(uCol,uRim,fr),uOp*(.04+fr*.9));}";
+  var ndl=new T.Group(), steel=mat(GLASS,{uCol:{value:C(0x7d8aa8)},uRim:{value:C(0xe6eaf2,1.2)}}), glass=mat(GLASS,{uCol:{value:C(0x2a3550)},uRim:{value:C(0xc8d4f2,.8)}});
+  function cyl(r1,r2,h,y,m){var me=new T.Mesh(new T.CylinderGeometry(r1,r2,h,28,1,false),m);me.position.y=y;ndl.add(me);return me;}
+  cyl(.022,.012,2.6,1.3,steel); cyl(.07,.05,.22,2.7,steel); cyl(.19,.19,1.7,3.7,glass);
+  var load=cyl(.16,.16,1.6,3.66,mat(GLASS,{uCol:{value:C(0x1d8f63,.9)},uRim:{value:C(0x7dffd0)}}));
+  var plg=new T.Group(); ndl.add(plg);
+  var pl1=new T.Mesh(new T.CylinderGeometry(.02,.02,1.7,10),steel); pl1.position.y=5.3; plg.add(pl1);
+  var pl2=new T.Mesh(new T.CylinderGeometry(.24,.24,.05,32),steel); pl2.position.y=6.15; plg.add(pl2);
+  var pl3=new T.Mesh(new T.CylinderGeometry(.17,.17,.06,32),steel); pl3.position.y=4.5; plg.add(pl3);
+  var ndir=new T.Vector3(.84,.58,.5).normalize(); ndl.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),ndir); cord.add(ndl);
+  var ndlMats=[steel,glass,load.material];
+
+  /* 10. dust in the field, drawn as out-of-focus discs by depth */
+  var ND=PH?60:110, dp=new Float32Array(ND*3), dc=new Float32Array(ND*3), ds=new Float32Array(ND), pal=[C(0x5b8cff),C(0x34e89e),C(0xff5cc8),C(0xc4d0f0)];
+  for(i=0;i<ND;i++){dp[i*3]=(R()*2-1)*7;dp[i*3+1]=(R()*2-1)*6;dp[i*3+2]=-9+R()*12;var pc=pal[(R()*4)|0];dc[i*3]=pc.r;dc[i*3+1]=pc.g;dc[i*3+2]=pc.b;ds[i]=.4+R();}
+  var dg=new T.BufferGeometry(); dg.setAttribute("position",new T.BufferAttribute(dp,3)); dg.setAttribute("aC",new T.BufferAttribute(dc,3)); dg.setAttribute("aS",new T.BufferAttribute(ds,1));
+  var dustM=new T.ShaderMaterial({uniforms:{uT:U.t,uF:{value:11},uPx:{value:1},uOp:{value:0}},transparent:true,depthWrite:false,blending:T.AdditiveBlending,
+    vertexShader:"attribute vec3 aC;attribute float aS;uniform float uT;uniform float uF;uniform float uPx;uniform float uOp;varying vec3 vC;varying float vA;\n"+
+      "void main(){vec3 p=position;p.y=mod(p.y+uT*.05*aS+6.,12.)-6.;p.x+=sin(uT*.1+aS*9.)*.2;vec4 mv=modelViewMatrix*vec4(p,1.);\n"+
+      "float coc=clamp(abs(-mv.z-uF)*.45,0.,4.);gl_PointSize=(1.4+coc*4.5)*aS*uPx;vA=uOp*.32/(1.+coc*coc*.9);vC=aC;gl_Position=projectionMatrix*mv;}",
+    fragmentShader:"varying vec3 vC;varying float vA;void main(){float d=length(gl_PointCoord-.5);float disc=smoothstep(.5,.4,d)*(.75+.25*smoothstep(.25,.45,d));gl_FragColor=vec4(vC,vA*disc);}"});
+  scene.add(new T.Points(dg,dustM));
+
+  /* post: bloom, depth of field (desktop), then grade + grain + the page's field colour */
+  var rt=new T.WebGLRenderTarget(1,1,{type:T.HalfFloatType,samples:4});
+  var composer=new M[1].EffectComposer(renderer,rt);
+  composer.addPass(new M[2].RenderPass(scene,cam));
+  var bokeh=new M[4].BokehPass(scene,cam,{focus:11,aperture:.0016,maxblur:.0065}); bokeh.enabled=tier>1; composer.addPass(bokeh);
+  var bloom=new M[3].UnrealBloomPass(new T.Vector2(256,256),.36,.28,.85); composer.addPass(bloom);
+  composer.addPass(new M[5].OutputPass());
+  var grade=new M[6].ShaderPass({uniforms:{tDiffuse:{value:null},uT:{value:0},uRes:{value:new T.Vector2(1,1)},uField:{value:new T.Vector3(3/255,6/255,13/255)}},
+    vertexShader:"varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}",
+    fragmentShader:"uniform sampler2D tDiffuse;uniform float uT;uniform vec2 uRes;uniform vec3 uField;varying vec2 vUv;\n"+
+      "void main(){vec3 c=texture2D(tDiffuse,vUv).rgb;vec2 q=(vUv-.5)*vec2(uRes.x/uRes.y,1.);c*=mix(.6,1.,smoothstep(1.,.25,length(q)));\n"+
+      "float l=dot(c,vec3(.3,.6,.1));float g=fract(sin(dot(floor(vUv*uRes)+fract(uT)*91.,vec2(12.9898,78.233)))*43758.5453)-.5;\n"+
+      "gl_FragColor=vec4(uField+c+g*(.012+.05*l),1.);}"});
+  composer.addPass(grade);
+
+  /* sizing: match the fig; centre the specimen where the SVG sat */
+  var W=1,H=1,cy=0;
+  function size(){
+    var r=wrap.getBoundingClientRect(), sr=o.svg.getBoundingClientRect(); W=Math.max(1,r.width|0); H=Math.max(1,r.height|0);
+    var dpr=Math.min(window.devicePixelRatio||1,tier>1?1.75:1.5); if(W*H*dpr*dpr>2.4e6)dpr=Math.sqrt(2.4e6/(W*H));
+    renderer.setPixelRatio(dpr); renderer.setSize(W,H,false); composer.setPixelRatio(dpr); composer.setSize(W,H);
+    bloom.resolution.set(W*dpr/(tier>1?1:2),H*dpr/(tier>1?1:2));
+    grade.uniforms.uRes.value.set(W*dpr,H*dpr); dustM.uniforms.uPx.value=dpr;
+    cy=sr.height?(sr.top+sr.height/2)-(r.top+r.height/2):0;
+    var st=o.st.getBoundingClientRect(); wrap.style.setProperty("--cap",Math.max(0,r.bottom-st.top)+"px");
+    cam.aspect=W/H; cam.setViewOffset(W,H,0,-cy,W,H); cam.updateProjectionMatrix();
+  }
+  new ResizeObserver(size).observe(wrap); size();
+
+  function sg2(p,a,b){return clamp((p-a)/(b-a));}
+  function io2(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}   /* cubic in-out */
+  function out3(t){return 1-Math.pow(1-t,3);}
+  var target=o.p, cur=o.p, last=performance.now(), vis=false, raf=0, slow=0, frames=0;
+  var V=new T.Vector3();
+
+  function update(p,t){
+    U.t.value=t; grade.uniforms.uT.value=t;
+    var intro=sg2(p,0,.16);
+    shellM.uniforms.uOp.value=out3(sg2(p,0,.12)); greyM.uniforms.uOp.value=out3(sg2(p,.04,.16))*.42;
+    oldM.uniforms.uOp.value=io2(intro); dustM.uniforms.uOp.value=out3(sg2(p,0,.2));
+    var inj=io2(sg2(p,.24,.32)), heal=io2(sg2(p,.62,.86)), sig=io2(sg2(p,.86,.95));
+    [shellM,greyM,oldM,neoM].forEach(function(m){m.uniforms.uInj.value=inj;m.uniforms.uHeal.value=heal;m.uniforms.uSig.value=sig;});
+    lesM.uniforms.uOp.value=out3(sg2(p,.26,.32))*(1-.75*io2(sg2(p,.5,.62)));
+    /* microglia converge on the rim, then thin out as the gel takes over */
+    var gIn=sg2(p,.27,.35), gOut=io2(sg2(p,.52,.62));
+    glia.material.uniforms.uOp.value=out3(gIn)*(1-gOut);
+    if(gIn>0&&gOut<1)gl0.forEach(function(g,j){var e=out3(clamp(gIn*1.6-g.r*.6));V.copy(g.d).multiplyScalar(1+(1-e)*.9+.03*Math.sin(t*1.3+j));
+      dum.position.copy(V);dum.scale.set(g.s*g.sx,g.s,g.s*(2-g.sx));dum.rotation.set(g.r*6,t*.2+j,0);dum.updateMatrix();glia.setMatrixAt(j,dum.matrix);});
+    glia.instanceMatrix.needsUpdate=true; glia.visible=gIn>0&&gOut<1;
+    /* needle in, gel injected, needle out */
+    var nIn=io2(sg2(p,.36,.44)), nOut=io2(sg2(p,.58,.66)), k=sg2(p,.44,.58);
+    ndl.visible=nIn>0&&nOut<1;
+    ndl.position.copy(tip).addScaledVector(ndir,(1-nIn)*7+nOut*7);
+    ndlMats.forEach(function(m){m.uniforms.uOp.value=Math.min(nIn*1.5,1)*(1-nOut);});
+    load.scale.y=Math.max(.001,1-k); load.position.y=2.86+.8*(1-k);   /* gel left between the hub and the plunger */
+    plg.position.y=-1.6*k;
+    var gs=io2(k); gel.visible=gs>0; gel.scale.setScalar(Math.max(.001,gs)); gel.position.copy(tip).multiplyScalar(1-gs);
+    var gf=1-.75*io2(sg2(p,.7,.95)); gelM.uniforms.uOp.value=Math.min(1,gs*1.4)*gf; gelCore.material.uniforms.uOp.value=gs*gf;
+    /* Schwann cells settle into columns; axons grow along them */
+    var sIn=sg2(p,.55,.65), sSet=io2(sg2(p,.58,.74));
+    sch.visible=sIn>0; sch.material.uniforms.uOp.value=out3(sIn);
+    if(sIn>0)sc0.forEach(function(c,j){var e=clamp(sSet*1.25-c.r*.25);V.lerpVectors(c.from,c.to,io2(e));V.y+=.04*Math.sin(t*.8+j)*(1-e);
+      dum.position.copy(V);dum.rotation.set(c.rot.x*(1-e),c.rot.y*(1-e),c.rot.z*(1-e));var sc=.024+.008*c.r;dum.scale.set(sc,sc*(1.6+2.6*e),sc);
+      dum.updateMatrix();sch.setMatrixAt(j,dum.matrix);});
+    sch.instanceMatrix.needsUpdate=true;
+    neoM.uniforms.uOp.value=sg2(p,.62,.86);
+    /* camera: the cord turns as you scroll; push in for the injury, pull back to see it reconnected */
+    cord.rotation.y=-.85+1.7*io2(p)+(RM?0:.025*Math.sin(t*.4));
+    cord.rotation.z=.06*Math.sin(p*3.1);
+    var fit=Math.max(4.5,2.1/cam.aspect), zoom=1-.13*io2(sg2(p,.22,.46))+.12*io2(sg2(p,.84,1));
+    var d=fit/Math.tan(T.MathUtils.degToRad(cam.fov/2))*zoom, el=.16+.1*Math.sin(p*Math.PI);
+    cam.position.set(Math.sin(.18)*d*Math.cos(el),Math.sin(el)*d,Math.cos(.18)*d*Math.cos(el)); cam.lookAt(0,.05,0);
+    bokeh.uniforms.focus.value=d-.4; dustM.uniforms.uF.value=d;
+  }
+
+  function frame(now){
+    raf=0; if(!vis) return;
+    var dt=Math.min(.1,(now-last)/1000); last=now;
+    cur+=(target-cur)*(1-Math.exp(-dt*7)); if(Math.abs(target-cur)<1e-4)cur=target;
+    update(RM?1:cur,RM?8:now/1000); composer.render();
+    if(!fig.classList.contains("is-3d")){fig.classList.add("is-3d");}
+    /* adaptive quality: drop depth of field, then resolution, if frames run long */
+    if(!RM&&++frames>30){slow=slow*.95+(dt>.024?1:0)*.05;
+      if(slow>.5){slow=0;frames=0;if(bokeh.enabled){bokeh.enabled=false;}else if(tier>0){tier=0;size();}}}
+    if(!RM)raf=requestAnimationFrame(frame);
+  }
+  function kick(){if(!raf&&vis){last=performance.now();raf=requestAnimationFrame(frame);}}
+  new IntersectionObserver(function(es){vis=es[0].isIntersecting;if(vis)kick();else if(raf){cancelAnimationFrame(raf);raf=0;}}).observe(wrap);
+  renderer.domElement.addEventListener("webglcontextlost",function(e){e.preventDefault();o.gl=null;fig.classList.remove("is-3d");wrap.remove();apply(o,o.p);});
+  o.gl={set:function(p){target=p;if(RM)kick();else kick();}};
+  vis=true; kick();
+}
 
 /* ---------- live PPG waveform ---------- */
 (function(){
