@@ -1307,7 +1307,7 @@ function mount3D(o,build,X){
   fig.insertBefore(wrap,fig.firstChild);
   var labels=(S.labels||[]).map(function(L){var e=document.createElement("span");e.className="gl-l"+(L.cls?" "+L.cls:"");e.setAttribute("aria-hidden","true");
     if(L.html)e.innerHTML=L.html;else e.textContent=L.text;wrap.appendChild(e);L.el=e;L.o=L.o||0;L.w=L.w||new T.Vector3();return L;});
-  var R=null, comp, bloom, bokeh, grade, tier=PH?1:2, W=1,H=1, cy=0, near=false, vis=false, raf=0, slow=0, frames=0;
+  var R=null, comp, bloom, bokeh, grade, tier=PH?1:2, W=1,H=1, cy=0, near=false, vis=false, raf=0, slow=0, frames=0, losses=0;
   var target=o.p, cur=o.p, last=performance.now(), V=new T.Vector3();
 
   function create(){
@@ -1326,15 +1326,21 @@ function mount3D(o,build,X){
         "float l=dot(c,vec3(.3,.6,.1));float g=fract(sin(dot(floor(vUv*uRes)+fract(uT)*91.,vec2(12.9898,78.233)))*43758.5453)-.5;\n"+
         "gl_FragColor=vec4(uField+c+g*(.012+.05*l),1.);}"});
     comp.addPass(grade);
-    R.domElement.addEventListener("webglcontextlost",function(e){e.preventDefault();if(!R)return;fail();});
+    /* a real GPU context loss (not one we caused by releasing the plate): rebuild; give up only if it keeps happening.
+       The listener is tied to this canvas, so a late event from a released canvas can't tear down a newer one. */
+    var mine=R.domElement;
+    mine.addEventListener("webglcontextlost",function(e){e.preventDefault();if(!R||R.domElement!==mine)return;
+      destroy();if(++losses>2){fail();return;}setTimeout(function(){if(near&&!R){create();kick();}},400);});
     size();
   }
   function destroy(){
     if(!R)return; cancelAnimationFrame(raf); raf=0;
-    comp.passes.forEach(function(p){p.dispose&&p.dispose();}); comp.dispose&&comp.dispose();
-    var c=R.domElement; R.dispose(); R.forceContextLoss(); c.remove(); R=null;
+    var r=R, c=r.domElement; R=null;   /* cleared first: any later event from this canvas is ignored */
+    comp.passes.forEach(function(p){p.dispose&&p.dispose();}); comp.dispose&&comp.dispose(); comp=null;
+    r.dispose(); r.forceContextLoss(); c.remove();
+    fig.classList.remove("is-3d");   /* the drawing shows rather than an empty box until the next 3D frame */
   }
-  function fail(){destroy();o.gl=null;fig.classList.remove("is-3d");wrap.remove();apply(o,o.p);}
+  function fail(){destroy();o.gl=null;wrap.remove();apply(o,o.p);}
   function size(){
     var r=wrap.getBoundingClientRect(), sr=o.svg.getBoundingClientRect(); W=Math.max(1,r.width|0); H=Math.max(1,r.height|0);
     cy=sr.height?(sr.top+sr.height/2)-(r.top+r.height/2):0;
@@ -1373,7 +1379,9 @@ function mount3D(o,build,X){
   }
   function kick(){if(!raf&&vis&&R){last=performance.now();raf=requestAnimationFrame(frame);}}
   /* hold a context only near the viewport; render only while on screen */
-  new IntersectionObserver(function(es){near=es[0].isIntersecting;if(near&&!R){create();kick();}else if(!near&&R)destroy();},{rootMargin:"120% 0px"}).observe(o.pl);
+  /* create when the plate comes within ~1 screen; release only once it is well past (~2.5 screens), so edges don't thrash */
+  new IntersectionObserver(function(es){if(es[0].isIntersecting){near=true;if(!R){create();kick();}}},{rootMargin:"120% 0px"}).observe(o.pl);
+  new IntersectionObserver(function(es){if(!es[0].isIntersecting){near=false;if(R)destroy();}},{rootMargin:"250% 0px"}).observe(o.pl);
   new IntersectionObserver(function(es){vis=es[0].isIntersecting;if(vis)kick();else if(raf){cancelAnimationFrame(raf);raf=0;}}).observe(wrap);
   o.gl={set:function(p){target=p;kick();}};
 }
