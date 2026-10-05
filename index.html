@@ -1696,7 +1696,8 @@ function sceneOsc(T,K,o){
   /* A. the injured cord in agarose, cut into slabs on the vibratome */
   var A=new T.Group(); scene.add(A);
   var bf=K.butterfly(.0118), slabs=[], NS=10, SW=.46;
-  var slabG=new T.BoxGeometry(SW,1.5,1.5), cordG=new T.CylinderGeometry(.5,.5,SW,48,1,true); cordG.rotateZ(Math.PI/2); cordG.scale(1,1,.82);
+  var slabG=new T.CylinderGeometry(.8,.8,SW,64,1,false); slabG.rotateZ(Math.PI/2);   /* agarose cylinder around the cord, cut into discs */
+  var cordG=new T.CylinderGeometry(.5,.5,SW,48,1,true); cordG.rotateZ(Math.PI/2); cordG.scale(1,1,.82);
   var bfG=new T.ExtrudeGeometry(bf,{depth:SW,bevelEnabled:false,curveSegments:16}); bfG.translate(0,0,-SW/2); bfG.rotateY(Math.PI/2);
   var faceG=new T.CircleGeometry(.5,48); faceG.rotateY(Math.PI/2); faceG.scale(1,1,.82);
   for(var i=0;i<NS;i++){
@@ -1770,7 +1771,7 @@ function sceneOsc(T,K,o){
   var dust=K.dust(scene,PH?40:80,R,[6,4,-8,2]);
   var keys=[["#5B8CFF","DAPI"],["#34E89E","GFAP"],["#FF5CC8","Iba1"],["#FF8A3D","p75"]];
   var S={scene:scene,cam:cam,bloom:[.38,.3,.82],dof:[.0018,.007],focus:8,labels:[
-    {text:"0.5% agarose block",w:V3(-2.3,-.95,.75),ax:0,ay:0},
+    {text:"0.5% agarose block",w:V3(-2.3,-.88,.55),ax:0,ay:0},
     {text:"T7/T8 contusion",w:V3(0,1.05,0),ay:-100},
     {text:"silicone mold, top view",w:V3(-1.3,0,-1.42),ax:0,ay:-100}
   ].concat(keys.map(function(k,j){return {html:'<i style="background:'+k[0]+'"></i>'+k[1],cls:"key",screen:[.5+(j-1.5)*.13,.12],ax:-50,ay:-50};}))};
