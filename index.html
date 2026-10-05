@@ -127,7 +127,8 @@ html.lenis{scroll-behavior:auto}
 .beat li{position:relative;padding:.55rem 0 .55rem 1.4rem;border-top:1px solid var(--rule);color:#C9D0DF;font-size:.98rem}
 .beat li::before{content:"";position:absolute;left:0;top:1.15rem;width:7px;height:7px;border-radius:50%;background:var(--gfap);box-shadow:0 0 8px var(--gfap)}
 .beat.cells figure{margin:0}
-.plate.long .beats{padding-bottom:70vh}   /* short text, so give the animation a longer runway */
+/* pacing: every plate gets the same generous runway, and its text spreads along it */
+@media (min-width:861px){.plate{min-height:360vh}.beats{display:flex;flex-direction:column;justify-content:space-between;padding:22vh 0 34vh}}
 .micro{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
 .micro img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px}
 figcaption{font:italic 500 1rem var(--serif);color:var(--dim);margin-top:.7rem}
@@ -155,15 +156,13 @@ figcaption{font:italic 500 1rem var(--serif);color:var(--dim);margin-top:.7rem}
   .plate{grid-template-columns:minmax(0,1fr);gap:0;padding:0 5vw}
   .top{background:var(--field);border-bottom:1px solid var(--rule);height:calc(56px + env(safe-area-inset-top,0px));padding-top:env(safe-area-inset-top,0px);padding-bottom:0}
   /* phone: the animation gets its own full screen, plays as you scroll, then the text reads normally below */
-  .figrun{display:block;height:190vh;height:190svh;margin:0 -5vw}
+  .figrun{display:block;height:360vh;height:360svh;margin:0 -5vw}
   .fig{top:calc(56px + env(safe-area-inset-top,0px));height:calc(100vh - 56px);height:calc(100svh - 56px - env(safe-area-inset-top,0px));min-height:0;padding:1rem 5vw 1.4rem;z-index:5;background:var(--field)}
   .specimen{max-height:62svh}
   .stage{font-size:1.05rem;min-height:2.7em}
   .figrun .hint{display:block}
   .beats{padding:2vh 0 8vh;border-top:1px solid var(--rule)}
   .beat{min-height:0;padding:1.4rem 0}
-  .plate.long .figrun{height:280vh;height:280svh}
-  .plate.long .beats{padding-bottom:8vh}
 }
 
 /* SVG styling */
@@ -189,6 +188,7 @@ figcaption{font:italic 500 1rem var(--serif);color:var(--dim);margin-top:.7rem}
 .gl canvas{display:block;width:100%;height:100%}
 .fig .stage,.fig .hint{position:relative;z-index:1}
 .fig.is-3d .gl{opacity:1}
+.gl-still{position:absolute;inset:0;width:100%;height:100%;visibility:hidden}
 .fig.is-3d .specimen{opacity:0;transition:opacity .8s}
 .gl-l{position:absolute;left:0;top:0;z-index:1;font:italic 500 .98rem/1.2 var(--serif);color:var(--dim);white-space:nowrap;opacity:0;will-change:transform,opacity;pointer-events:none}
 .gl-l.lbl{font:500 .74rem/1.2 var(--sans);color:var(--ink);letter-spacing:.01em}
@@ -526,7 +526,7 @@ main img.zoomable:focus-visible{outline:2px solid var(--gfap);outline-offset:3px
 </section>
 
 <!-- Plate: PFAS -->
-<section class="plate long" aria-labelledby="bowden-h">
+<section class="plate" aria-labelledby="bowden-h">
   <div class="fig">
     <svg class="specimen" id="fig-pfas" viewBox="0 0 400 300" role="img" aria-label="Structure of perfluorooctanesulfonic acid (PFOS) above an illustrative mass spectrometry chromatogram">
       <defs><filter id="gl-p" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
@@ -1299,91 +1299,115 @@ function kit3D(T){
   return K;
 }
 
-/* mount a scene into a plate: renderer + post chain, sizing, labels, lifecycle */
-function mount3D(o,build,X){
-  var T=X.T, K=kit3D(T), fig=o.svg.closest(".fig"), S=build(T,K,o,X), cam=S.cam;
+/* one shared renderer for every plate. It renders whichever plate is most on screen; a plate you scroll away from keeps
+   a still of its last frame. One WebGL context and one set of post buffers, however far down the page you go. */
+var HOST=null;
+function glHost(X){
+  if(HOST)return HOST;
+  var T=X.T, H={T:T,mounts:[],active:null,raf:0,tier:PH?1:2,slow:0,frames:0,last:0,lost:false,losses:0,cssW:1,cssH:1,dpr:1};
+  var R=new T.WebGLRenderer({antialias:false,alpha:false,powerPreference:"high-performance"});
+  R.setClearColor(0x000000,1); R.toneMapping=T.ACESFilmicToneMapping; R.toneMappingExposure=1.05; R.localClippingEnabled=true; H.R=R;
+  var s0=new T.Scene(), c0=new T.PerspectiveCamera();
+  H.comp=new X.EC(R,new T.WebGLRenderTarget(1,1,{type:T.HalfFloatType,samples:4}));
+  H.rp=new X.RP(s0,c0); H.comp.addPass(H.rp);
+  H.bokeh=new X.BP(s0,c0,{focus:10,aperture:0,maxblur:0}); H.comp.addPass(H.bokeh);
+  H.bloom=new X.UB(new T.Vector2(256,256),.36,.28,.85); H.comp.addPass(H.bloom);
+  H.comp.addPass(new X.OP());
+  H.grade=new X.SP({uniforms:{tDiffuse:{value:null},uT:{value:0},uRes:{value:new T.Vector2(1,1)},uField:{value:new T.Vector3(3/255,6/255,13/255)}},
+    vertexShader:"varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}",
+    fragmentShader:"uniform sampler2D tDiffuse;uniform float uT;uniform vec2 uRes;uniform vec3 uField;varying vec2 vUv;\n"+
+      "void main(){vec3 c=texture2D(tDiffuse,vUv).rgb;vec2 q=(vUv-.5)*vec2(uRes.x/uRes.y,1.);c*=mix(.6,1.,smoothstep(1.,.25,length(q)));\n"+
+      "float l=dot(c,vec3(.3,.6,.1));float g=fract(sin(dot(floor(vUv*uRes)+fract(uT)*91.,vec2(12.9898,78.233)))*43758.5453)-.5;\n"+
+      "gl_FragColor=vec4(uField+c+g*(.012+.05*l),1.);}"});
+  H.comp.addPass(H.grade);
+  /* GPU context lost: the plates that have a still keep showing it, the live one falls back to its drawing; resume on restore */
+  R.domElement.addEventListener("webglcontextlost",function(e){e.preventDefault();H.lost=true;cancelAnimationFrame(H.raf);H.raf=0;
+    if(H.active){H.active.fig.classList.remove("is-3d");}
+    if(++H.losses>2){H.mounts.forEach(function(m){m.fail();});}});
+  R.domElement.addEventListener("webglcontextrestored",function(){H.lost=false;var a=H.active;H.active=null;if(a)hostActivate(a);});
+
+  /* point the shared pipeline at a plate */
+  H.setSize=function(m){
+    var dpr=Math.min(window.devicePixelRatio||1,H.tier>1?1.75:H.tier>0?1.5:1); if(m.W*m.H*dpr*dpr>2.4e6)dpr=Math.sqrt(2.4e6/(m.W*m.H));
+    if(m.W!==H.cssW||m.H!==H.cssH||dpr!==H.dpr){H.cssW=m.W;H.cssH=m.H;H.dpr=dpr;
+      R.setPixelRatio(dpr); R.setSize(m.W,m.H,false); H.comp.setPixelRatio(dpr); H.comp.setSize(m.W,m.H);
+      H.bloom.resolution.set(m.W*dpr/(H.tier>1?1:2),m.H*dpr/(H.tier>1?1:2));
+      H.grade.uniforms.uRes.value.set(m.W*dpr,m.H*dpr);}
+    m.K.px.value=dpr;
+  };
+  H.target=function(m){var S=m.S,b=S.bloom||[.36,.28,.85];
+    H.rp.scene=H.bokeh.scene=S.scene; H.rp.camera=H.bokeh.camera=S.cam;
+    H.bokeh.enabled=!!S.dof&&H.tier>1; if(S.dof){H.bokeh.uniforms.aperture.value=S.dof[0];H.bokeh.uniforms.maxblur.value=S.dof[1];}
+    H.bokeh.uniforms.aspect.value=S.cam.aspect;
+    H.bloom.strength=b[0]; H.bloom.radius=b[1]; H.bloom.threshold=b[2];
+    H.setSize(m);};
+  H.draw=function(m,p,t){m.K.t.value=t;H.grade.uniforms.uT.value=t;m.S.update(p,t);
+    if(H.bokeh.enabled&&m.S.focus!=null)H.bokeh.uniforms.focus.value=m.S.focus;H.comp.render();m.place();};
+  /* copy the frame just drawn into a plate's still (same task, so the drawing buffer is still valid) */
+  H.still=function(m){var c=m.poster,src=R.domElement;c.width=Math.max(1,Math.round(m.W));c.height=Math.max(1,Math.round(m.H));
+    c.getContext("2d").drawImage(src,0,0,c.width,c.height);m.hasStill=true;};
+  HOST=H; return H;
+}
+function hostPick(){
+  var H=HOST,best=null;
+  H.mounts.forEach(function(m){if(m.ratio>0&&(!best||m.ratio>best.ratio))best=m;});
+  if(best&&best!==H.active)hostActivate(best);
+}
+function hostActivate(m){
+  var H=HOST,a=H.active;
+  if(H.lost)return;
+  if(a&&a!==m){a.cur=a.target;H.draw(a,RM?1:a.cur,RM?8:performance.now()/1000);H.still(a);a.poster.style.visibility="visible";}
+  H.active=m; m.wrap.insertBefore(H.R.domElement,m.wrap.firstChild); m.poster.style.visibility="hidden";
+  H.target(m); hostKick();
+}
+function hostKick(){var H=HOST;if(!H.raf&&H.active&&!H.lost){H.last=performance.now();H.raf=requestAnimationFrame(hostFrame);}}
+function hostFrame(now){
+  var H=HOST,m=H.active; H.raf=0; if(!m||H.lost||m.ratio<=0)return;
+  var dt=Math.min(.1,(now-H.last)/1000); H.last=now;
+  m.cur+=(m.target-m.cur)*(1-Math.exp(-dt*6)); if(Math.abs(m.target-m.cur)<1e-4)m.cur=m.target;
+  H.draw(m,RM?1:m.cur,RM?8:now/1000);
+  if(!m.fig.classList.contains("is-3d"))m.fig.classList.add("is-3d");
+  if(!RM&&++H.frames>30){H.slow=H.slow*.95+(dt>.024?1:0)*.05;
+    if(H.slow>.5){H.slow=0;H.frames=0;if(H.bokeh.enabled){H.bokeh.enabled=false;}else if(H.tier>0){H.tier--;H.setSize(m);}}}
+  if(!RM)H.raf=requestAnimationFrame(hostFrame);
+}
+
+/* mount a scene into a plate: its own scene, camera, labels and still; the renderer is shared */
+function mount3D(o,build,X,data){
+  var T=X.T, H=glHost(X), K=kit3D(T), fig=o.svg.closest(".fig"), S=build(T,K,o,X,data), cam=S.cam, V=new T.Vector3();
   var wrap=document.createElement("div"); wrap.className="gl";
   wrap.setAttribute("role","img"); wrap.setAttribute("aria-label",o.svg.getAttribute("aria-label"));
   fig.insertBefore(wrap,fig.firstChild);
+  var poster=document.createElement("canvas"); poster.className="gl-still"; poster.setAttribute("aria-hidden","true"); wrap.appendChild(poster);
+  var m={o:o,S:S,K:K,fig:fig,wrap:wrap,poster:poster,W:1,H:1,ratio:0,target:o.p,cur:o.p,hasStill:false};
   var labels=(S.labels||[]).map(function(L){var e=document.createElement("span");e.className="gl-l"+(L.cls?" "+L.cls:"");e.setAttribute("aria-hidden","true");
     if(L.html)e.innerHTML=L.html;else e.textContent=L.text;wrap.appendChild(e);L.el=e;L.o=L.o||0;L.w=L.w||new T.Vector3();return L;});
-  var R=null, comp, bloom, bokeh, grade, tier=PH?1:2, W=1,H=1, cy=0, near=false, vis=false, raf=0, slow=0, frames=0, losses=0;
-  var target=o.p, cur=o.p, last=performance.now(), V=new T.Vector3();
-
-  function create(){
-    R=new T.WebGLRenderer({antialias:false,alpha:false,powerPreference:"high-performance"});
-    R.setClearColor(0x000000,1); R.toneMapping=T.ACESFilmicToneMapping; R.toneMappingExposure=1.05;
-    wrap.insertBefore(R.domElement,wrap.firstChild);
-    comp=new X.EC(R,new T.WebGLRenderTarget(1,1,{type:T.HalfFloatType,samples:4}));
-    comp.addPass(new X.RP(S.scene,cam));
-    bokeh=new X.BP(S.scene,cam,{focus:S.focus||10,aperture:S.dof?S.dof[0]:0,maxblur:S.dof?S.dof[1]:0}); bokeh.enabled=!!S.dof&&tier>1; comp.addPass(bokeh);
-    var b=S.bloom||[.36,.28,.85]; bloom=new X.UB(new T.Vector2(256,256),b[0],b[1],b[2]); comp.addPass(bloom);
-    comp.addPass(new X.OP());
-    grade=new X.SP({uniforms:{tDiffuse:{value:null},uT:{value:0},uRes:{value:new T.Vector2(1,1)},uField:{value:new T.Vector3(3/255,6/255,13/255)}},
-      vertexShader:"varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}",
-      fragmentShader:"uniform sampler2D tDiffuse;uniform float uT;uniform vec2 uRes;uniform vec3 uField;varying vec2 vUv;\n"+
-        "void main(){vec3 c=texture2D(tDiffuse,vUv).rgb;vec2 q=(vUv-.5)*vec2(uRes.x/uRes.y,1.);c*=mix(.6,1.,smoothstep(1.,.25,length(q)));\n"+
-        "float l=dot(c,vec3(.3,.6,.1));float g=fract(sin(dot(floor(vUv*uRes)+fract(uT)*91.,vec2(12.9898,78.233)))*43758.5453)-.5;\n"+
-        "gl_FragColor=vec4(uField+c+g*(.012+.05*l),1.);}"});
-    comp.addPass(grade);
-    /* a real GPU context loss (not one we caused by releasing the plate): rebuild; give up only if it keeps happening.
-       The listener is tied to this canvas, so a late event from a released canvas can't tear down a newer one. */
-    var mine=R.domElement;
-    mine.addEventListener("webglcontextlost",function(e){e.preventDefault();if(!R||R.domElement!==mine)return;
-      destroy();if(++losses>2){fail();return;}setTimeout(function(){if(near&&!R){create();kick();}},400);});
-    size();
-  }
-  function destroy(){
-    if(!R)return; cancelAnimationFrame(raf); raf=0;
-    var r=R, c=r.domElement; R=null;   /* cleared first: any later event from this canvas is ignored */
-    comp.passes.forEach(function(p){p.dispose&&p.dispose();}); comp.dispose&&comp.dispose(); comp=null;
-    r.dispose(); r.forceContextLoss(); c.remove();
-    fig.classList.remove("is-3d");   /* the drawing shows rather than an empty box until the next 3D frame */
-  }
-  function fail(){destroy();o.gl=null;wrap.remove();apply(o,o.p);}
-  function size(){
-    var r=wrap.getBoundingClientRect(), sr=o.svg.getBoundingClientRect(); W=Math.max(1,r.width|0); H=Math.max(1,r.height|0);
-    cy=sr.height?(sr.top+sr.height/2)-(r.top+r.height/2):0;
-    var st=o.st.getBoundingClientRect(); wrap.style.setProperty("--cap",Math.max(0,r.bottom-st.top)+"px");
-    cam.aspect=W/H; cam.setViewOffset(W,H,0,-cy,W,H); cam.updateProjectionMatrix();
-    if(!R)return;
-    var dpr=Math.min(window.devicePixelRatio||1,tier>1?1.75:tier>0?1.5:1); if(W*H*dpr*dpr>2.4e6)dpr=Math.sqrt(2.4e6/(W*H));
-    R.setPixelRatio(dpr); R.setSize(W,H,false); comp.setPixelRatio(dpr); comp.setSize(W,H);
-    bloom.resolution.set(W*dpr/(tier>1?1:2),H*dpr/(tier>1?1:2));
-    grade.uniforms.uRes.value.set(W*dpr,H*dpr); K.px.value=dpr;
-  }
-  new ResizeObserver(function(){size();if(RM)kick();}).observe(wrap);
-
-  function place(){
+  m.place=function(){
     for(var i=0;i<labels.length;i++){var L=labels[i],e=L.el;
       if(L.o<.01){if(e.style.opacity!=="0")e.style.opacity="0";continue;}
       var x,y;
-      if(L.screen){x=L.screen[0]*W;y=L.screen[1]*H;}
-      else{V.copy(L.w).project(cam);x=(V.x*.5+.5)*W;y=(-V.y*.5+.5)*H;}
+      if(L.screen){x=L.screen[0]*m.W;y=L.screen[1]*m.H;}
+      else{V.copy(L.w).project(cam);x=(V.x*.5+.5)*m.W;y=(-V.y*.5+.5)*m.H;}
       e.style.opacity=L.o.toFixed(3);
       e.style.transform="translate3d("+x.toFixed(1)+"px,"+y.toFixed(1)+"px,0) translate("+(L.ax==null?-50:L.ax)+"%,"+(L.ay==null?-50:L.ay)+"%)";
     }
-  }
-  function frame(now){
-    raf=0; if(!vis||!R) return;
-    var dt=Math.min(.1,(now-last)/1000); last=now;
-    cur+=(target-cur)*(1-Math.exp(-dt*8)); if(Math.abs(target-cur)<1e-4)cur=target;
-    var t=RM?8:now/1000; K.t.value=t; grade.uniforms.uT.value=t;
-    S.update(RM?1:cur,t);
-    if(bokeh.enabled&&S.focus!=null)bokeh.uniforms.focus.value=S.focus;
-    comp.render(); place();
-    if(!fig.classList.contains("is-3d"))fig.classList.add("is-3d");
-    if(!RM&&++frames>30){slow=slow*.95+(dt>.024?1:0)*.05;
-      if(slow>.5){slow=0;frames=0;if(bokeh.enabled){bokeh.enabled=false;}else if(tier>0){tier--;size();}}}
-    if(!RM)raf=requestAnimationFrame(frame);
-  }
-  function kick(){if(!raf&&vis&&R){last=performance.now();raf=requestAnimationFrame(frame);}}
-  /* hold a context only near the viewport; render only while on screen */
-  /* create when the plate comes within ~1 screen; release only once it is well past (~2.5 screens), so edges don't thrash */
-  new IntersectionObserver(function(es){if(es[0].isIntersecting){near=true;if(!R){create();kick();}}},{rootMargin:"120% 0px"}).observe(o.pl);
-  new IntersectionObserver(function(es){if(!es[0].isIntersecting){near=false;if(R)destroy();}},{rootMargin:"250% 0px"}).observe(o.pl);
-  new IntersectionObserver(function(es){vis=es[0].isIntersecting;if(vis)kick();else if(raf){cancelAnimationFrame(raf);raf=0;}}).observe(wrap);
-  o.gl={set:function(p){target=p;kick();}};
+  };
+  m.size=function(){
+    var r=wrap.getBoundingClientRect(), sr=o.svg.getBoundingClientRect(); m.W=Math.max(1,r.width|0); m.H=Math.max(1,r.height|0);
+    var cy=sr.height?(sr.top+sr.height/2)-(r.top+r.height/2):0;
+    var st=o.st.getBoundingClientRect(); wrap.style.setProperty("--cap",Math.max(0,r.bottom-st.top)+"px");
+    cam.aspect=m.W/m.H; cam.setViewOffset(m.W,m.H,0,-cy,m.W,m.H); cam.updateProjectionMatrix();
+    if(H.active===m){H.target(m);hostKick();}
+  };
+  m.fail=function(){if(H.active===m)H.active=null;wrap.remove();fig.classList.remove("is-3d");o.gl=null;apply(o,o.p);};
+  m.size();
+  new ResizeObserver(function(){m.size();}).observe(wrap);
+  H.mounts.push(m);
+  /* give the plate a still right away, so it never shows an empty box before it goes live */
+  if(!H.lost){var a=H.active;H.target(m);H.draw(m,RM?1:m.cur,RM?8:performance.now()/1000);H.still(m);poster.style.visibility="visible";fig.classList.add("is-3d");if(a)H.target(a);}
+  new IntersectionObserver(function(es){m.ratio=es[0].isIntersecting?es[0].intersectionRatio:0;hostPick();if(H.active===m)hostKick();},
+    {threshold:[0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1]}).observe(wrap);
+  o.gl={set:function(p){m.target=p;if(H.active===m)hostKick();}};
 }
 
 function sceneSpine(T,K,o){
@@ -1558,71 +1582,94 @@ function sceneSpine(T,K,o){
   return S;
 }
 
-function sceneRat(T,K,o){
+function sceneRat(T,K,o,X,buf){
   var R=K.rng(11), C=K.C, sg=K.sg, io=K.io, out=K.out, bump=K.bump, V3=function(x,y,z){return new T.Vector3(x,y,z||0);};
   var scene=new T.Scene(), cam=new T.PerspectiveCamera(28,1,.1,80), rat=new T.Group(); scene.add(rat);
-  var SKIN=[[0x26355e,1],[0xc8d4f2,.9]], BONE=[[0x6d7896,.7],[0xe6eaf2,1.05]];
-  function prof(keys){return function(u){for(var i=1;i<keys.length;i++)if(u<=keys[i][0]){var a=keys[i-1],b=keys[i],f=(u-a[0])/(b[0]-a[0]);f=.5-.5*Math.cos(f*Math.PI);return a[1]+(b[1]-a[1])*f;}return keys[keys.length-1][1];};}
 
-  /* body: a lofted volume from the tail base to the snout, flatter on the belly */
-  var spineC=new T.CatmullRomCurve3([V3(-2.75,.12),V3(-2.1,.28),V3(-1,.42),V3(.3,.44),V3(1.4,.48),V3(2.1,.46),V3(2.7,.3),V3(3.28,.1)]);
-  var body=K.solid(K.loft(spineC,prof([[0,.2],[.08,.52],[.22,.8],[.42,.84],[.55,.72],[.64,.5],[.7,.52],[.8,.45],[.9,.27],[1,.03]]),140,56,function(){return .82;}),SKIN[0],SKIN[1]);
-  rat.add(body);
-  var tail=K.glass(K.loft(new T.CatmullRomCurve3([V3(-2.6,.1),V3(-3.4,-.12),V3(-4.4,-.46),V3(-5.3,-.5),V3(-6.15,-.22)]),function(u){return .15*(1-u)+.018;},90,14),SKIN[0],SKIN[1]);
-  rat.add(tail);
-  [1,-1].forEach(function(sd){
-    var ear=K.glass(new T.SphereGeometry(1,24,16),SKIN[0],[0xc8d4f2,1.1]); ear.scale.set(.2,.25,.045); ear.position.set(2.2,.9,.3*sd); ear.rotation.set(.2*sd,.5*sd,-.25); rat.add(ear);
-    var eye=new T.Mesh(new T.SphereGeometry(.05,16,12),K.mat(K.CELL,{uCol:{value:C(0xe6eaf2,1.4)}})); eye.position.set(2.82,.42,.25*sd); rat.add(eye);
-    var thigh=K.glass(new T.SphereGeometry(1,28,20),SKIN[0],SKIN[1]); thigh.scale.set(.55,.46,.26); thigh.position.set(-1.55,.02,.4*sd); rat.add(thigh);
-    var legs=K.tubes([{pts:[V3(-1.5,-.1,.42*sd),V3(-1.72,-.58,.46*sd),V3(-1.38,-.9,.47*sd),V3(-.92,-.98,.47*sd)]},
-      {pts:[V3(1.52,.02,.32*sd),V3(1.46,-.5,.34*sd),V3(1.68,-.92,.35*sd),V3(1.96,-.97,.35*sd)],r:.055}],.07,48,8);
-    rat.add(new T.Mesh(legs,K.mat(K.GLASS,{uCol:{value:C(0x26355e)},uRim:{value:C(0xc8d4f2,.9)}})));
-    for(var w=0;w<4;w++){var a=(w-1.5)*.16;rat.add(K.line([V3(3.15,.14,.1*sd),V3(3.55,.2+a*.6,.3*sd),V3(3.95,.24+a*1.4,.55*sd)],0x8a94ac,.35));}
-  });
+  /* the sculpted rat (images/rat.bin): quantized positions, indices, and the dorsal line for the cord */
+  var dv=new DataView(buf), nV=dv.getUint32(4,true), nF=dv.getUint32(8,true), nC=dv.getUint32(12,true);
+  var lo=new Float32Array(buf,16,3), hi=new Float32Array(buf,28,3), q=new Int16Array(buf,40,nV*3);
+  var ioff=40+nV*6, idx=new Uint16Array(buf,ioff,nF*3);
+  var cordPts=new Float32Array(buf.slice(ioff+nF*6,ioff+nF*6+nC*12));
+  var pos=new Float32Array(nV*3);
+  for(var i=0;i<nV*3;i++){var a=i%3;pos[i]=lo[a]+(q[i]+32767)/65534*(hi[a]-lo[a]);}
+  var geo=new T.BufferGeometry(); geo.setAttribute("position",new T.BufferAttribute(pos,3)); geo.setIndex(new T.BufferAttribute(idx,1)); geo.computeVertexNormals();
+  /* albino lab rat colouring: white coat, pink ears, nose and paws */
+  var col=new Float32Array(nV*3), W0=C(0xe4ddd5), PK=C(0xe3a2a8), tmp=new T.Color();
+  for(i=0;i<nV;i++){var x=pos[i*3],y=pos[i*3+1],z=pos[i*3+2];
+    var ear=Math.max(0,1-Math.hypot(x-1.84,y-1.1,Math.abs(z)-.29)/.24), nose=K.sg(x,2.78,2.95), paw=y<.11?K.sg(.11-y,0,.05):0, tail=K.sg(-x,1.95,2.15);
+    tmp.copy(W0).lerp(PK,Math.min(1,ear*1.2+nose+paw*.9+tail*.8));col[i*3]=tmp.r;col[i*3+1]=tmp.g;col[i*3+2]=tmp.b;}
+  geo.setAttribute("color",new T.BufferAttribute(col,3));
+  var clip=new T.Plane(new T.Vector3(1,0,0),10);
+  var furM=new T.MeshPhysicalMaterial({vertexColors:true,roughness:.82,sheen:1,sheenColor:new T.Color(0xffffff),sheenRoughness:.42,transparent:true,clippingPlanes:[clip]});
+  var body=new T.Mesh(geo,furM); rat.add(body);
+  var xray=K.glass(geo,[0x26355e,1],[0xc8d4f2,.9]); rat.add(xray);   /* the x-ray view of the same body */
+  /* eyes, whiskers, tail */
+  var eyeM=new T.MeshPhysicalMaterial({color:0x5a0f1c,roughness:.12,clearcoat:1,clearcoatRoughness:.05,transparent:true,clippingPlanes:[clip]});
+  [1,-1].forEach(function(s){var e=new T.Mesh(new T.SphereGeometry(.052,20,14),eyeM);e.position.set(2.2,.92,.275*s);rat.add(e);
+    for(var w=0;w<6;w++){var a=(w-2.5)*.12;rat.add(K.line([V3(2.7,.63+a*.2,.2*s),V3(3.12,.7+a*.9,.42*s),V3(3.52,.72+a*1.6,.62*s)],0xe6eaf2,.6));}});
+  var tailC=new T.CatmullRomCurve3([V3(-2.08,.52),V3(-2.6,.36),V3(-3.3,.14),V3(-4.2,.05),V3(-5.0,.06),V3(-5.8,.15)]);
+  var tg=K.loft(tailC,function(u){return .13*(1-u)+.022;},140,14);
+  var tc=new Float32Array(tg.attributes.position.count*3);
+  for(i=0;i<tg.attributes.position.count;i++){var u=tg.attributes.uv.getX(i),ring=.93+.07*Math.cos(u*420);tmp.copy(PK).lerp(W0,.15).multiplyScalar(ring);tc[i*3]=tmp.r;tc[i*3+1]=tmp.g;tc[i*3+2]=tmp.b;}
+  tg.setAttribute("color",new T.BufferAttribute(tc,3));
+  var tailM=new T.MeshPhysicalMaterial({vertexColors:true,roughness:.6,sheen:.4,sheenColor:new T.Color(0xffd8de),transparent:true,clippingPlanes:[clip]});
+  var tailMesh=new T.Mesh(tg,tailM); rat.add(tailMesh);
+  var tailX=K.glass(tg,[0x26355e,1],[0xc8d4f2,.9]); rat.add(tailX);
+  /* soft contact shadow on the bench */
+  var shadow=new T.Mesh(new T.CircleGeometry(1,48),new T.ShaderMaterial({transparent:true,depthWrite:false,uniforms:{uOp:{value:0}},
+    vertexShader:"varying vec2 vP;void main(){vP=position.xy;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}",
+    fragmentShader:"uniform float uOp;varying vec2 vP;void main(){float d=length(vP);gl_FragColor=vec4(0.,0.,0.,uOp*.55*pow(max(1.-d,0.),1.6));}"}));
+  shadow.rotation.x=-Math.PI/2; shadow.scale.set(2.9,.95,1); shadow.position.set(-.2,.004,0); rat.add(shadow);
+  /* lighting for the fur */
+  var key=new T.DirectionalLight(0xfff2e6,2.3); key.position.set(3,5,4); scene.add(key);
+  var rim=new T.DirectionalLight(0x8fb0ff,1.7); rim.position.set(-4,2.5,-5); scene.add(rim);
+  scene.add(new T.HemisphereLight(0x9fb6ff,0x0c0f18,.75));
 
-  /* the spinal cord under the back, drawn head to tail */
-  var cordC=new T.CatmullRomCurve3([V3(2.15,.6),V3(1.2,.78),V3(0,.8),V3(-1.2,.72),V3(-2.2,.52),V3(-2.75,.34)]);
-  var cord=K.drawn(cordC,.034,0x34e89e,.62,200); rat.add(cord);
-
-  /* vertebrae: lamina arch, spinous process and body, staggered in along the cord */
-  var arch=new T.TorusGeometry(.14,.026,8,28,Math.PI); arch.rotateY(Math.PI/2);
-  var proc=new T.ConeGeometry(.035,.17,10); proc.translate(0,.22,0);
-  var vbody=new T.CylinderGeometry(.11,.11,.15,20); vbody.rotateZ(Math.PI/2); vbody.translate(0,-.17,0);
-  var verts=[], TT=new T.Vector3(), P=new T.Vector3(), inj=null, lift=null;
-  for(var i=0;i<15;i++){
-    var u=.05+i*.064; cordC.getPointAt(u,P); cordC.getTangentAt(u,TT);
+  /* the spinal cord along the dorsal line, drawn head to tail */
+  var cp=[];for(i=0;i<nC;i++)cp.push(V3(cordPts[i*3],cordPts[i*3+1],cordPts[i*3+2]));
+  var cordC=new T.CatmullRomCurve3(cp);
+  var cord=K.drawn(cordC,.036,0x34e89e,.62,240); rat.add(cord);
+  /* vertebrae: lamina arch, spinous process and body */
+  var BONE=[[0x6d7896,.7],[0xe6eaf2,1.05]];
+  var arch=new T.TorusGeometry(.13,.024,8,28,Math.PI); arch.rotateY(Math.PI/2);
+  var proc=new T.ConeGeometry(.032,.15,10); proc.translate(0,.2,0);
+  var vbody=new T.CylinderGeometry(.1,.1,.14,20); vbody.rotateZ(Math.PI/2); vbody.translate(0,-.16,0);
+  var verts=[], TT=new T.Vector3(), P=new T.Vector3(), lift=null;
+  for(i=0;i<17;i++){
+    var uu=.04+i*.057; cordC.getPointAt(uu,P); cordC.getTangentAt(uu,TT);
     var g=new T.Group(), lam=new T.Group();
     lam.add(K.glass(arch,BONE[0],BONE[1],K.LIT)); lam.add(K.glass(proc,BONE[0],BONE[1],K.LIT));
     g.add(lam); g.add(K.glass(vbody,BONE[0],BONE[1],K.LIT));
-    g.position.copy(P); g.rotation.z=Math.atan2(TT.y,TT.x)+Math.PI; rat.add(g); verts.push({g:g,lam:lam,u:u});
-    if(!lift||Math.abs(u-.4)<Math.abs(lift.u-.4)){lift=verts[i];}
+    g.position.copy(P); g.rotation.z=Math.atan2(TT.y,TT.x)+Math.PI; rat.add(g); verts.push({g:g,lam:lam,u:uu});
+    if(!lift||Math.abs(uu-.38)<Math.abs(lift.u-.38))lift=verts[i];
   }
-  inj=lift.g.position.clone();
-
+  var inj=lift.g.position.clone();
   /* contusion: impactor, the injury, a ring that keeps pulsing outward */
   var imp=new T.Group(); rat.add(imp);
   imp.add(K.solid(new T.CylinderGeometry(.04,.04,2,16),[0x7d8aa8,1],[0xe6eaf2,1.2]));
   var tipG=new T.CylinderGeometry(.11,.11,.06,24); tipG.translate(0,-1.03,0); imp.add(K.solid(tipG,[0x7d8aa8,1],[0xe6eaf2,1.2],[0xe6eaf2,.5]));
-  var hurt=new T.Mesh(new T.SphereGeometry(.1,24,16),K.mat(K.CELL,{uCol:{value:C(0xff5cc8,1.8)}})); hurt.position.copy(inj); rat.add(hurt);
-  var ring=new T.Mesh(new T.TorusGeometry(1,.012,8,64),K.mat("void main(){gl_FragColor=vec4(uCol,uOp);}",{uCol:{value:C(0xff5cc8,1.2)}}));
+  var hurt=new T.Mesh(new T.SphereGeometry(.09,24,16),K.mat(K.CELL,{uCol:{value:C(0xff5cc8,1.5)}})); hurt.position.copy(inj); rat.add(hurt);
+  var ring=new T.Mesh(new T.TorusGeometry(1,.012,8,64),K.mat("void main(){gl_FragColor=vec4(uCol,uOp);}",{uCol:{value:C(0xff5cc8,1.1)}}));
   ring.rotation.x=Math.PI/2; ring.position.copy(inj); rat.add(ring);
   var lead=K.line([inj.clone().add(V3(0,.14)),inj.clone().add(V3(0,.62))],0x8a94ac,.5); rat.add(lead);
 
-  var dust=K.dust(scene,PH?50:90,R,[9,5,-10,2]);
-  var S={scene:scene,cam:cam,bloom:[.34,.28,.86],dof:[.0013,.006],focus:14,
-    labels:[{text:"T7/T8 contusion",w:inj.clone().add(V3(0,.78)),ay:-100}]};
-  var tgt=new T.Vector3(), A=new T.Vector3(-1.15,-.05,0), B=new T.Vector3(0,.45,0);
-  var parts=[body,tail];
-  rat.children.forEach(function(c){if(c!==cord&&verts.every(function(v){return v.g!==c;})&&c!==imp&&c!==hurt&&c!==ring&&c!==lead)parts.push(c);});
-  parts=parts.filter(function(c,i,a){return a.indexOf(c)===i;});
-  var NX=new T.Vector3(1,0,0);
+  var dust=K.dust(scene,PH?40:80,R,[9,5,-10,2]);
+  var S={scene:scene,cam:cam,bloom:[.3,.28,.9],dof:[.0013,.006],focus:14,labels:[{text:"T7/T8 contusion",w:inj.clone().add(V3(0,.78)),ay:-100}]};
+  var tgt=new T.Vector3(), A=V3(-.4,.6,0), B=V3(.1,.85,0), NX=new T.Vector3(1,0,0);
+  var furMs=[furM,eyeM,tailM];
 
   S.update=function(p,t){
-    /* an x-ray scan sweeps from the snout to the tail to reveal the animal */
-    var sw=io(sg(p,0,.3)), X=4.1-10.6*sw, edge=p<.3?1:1-sg(p,.3,.34);
-    parts.forEach(function(c){K.plane(c,NX,X,edge*.9);K.op(c,1);});
+    /* a scan sweeps from the snout to the tail tip to reveal the animal */
+    var sw=io(sg(p,0,.26)), X0=3.6-9.9*sw, edge=p<.26?1:1-sg(p,.26,.3);
+    clip.constant=-X0;
+    /* then the body turns to an x-ray so the cord shows beneath the back */
+    var xr=io(sg(p,.3,.42)), solid=1-.86*xr;
+    furMs.forEach(function(m){m.opacity=solid;m.depthWrite=solid>.97;});
+    K.op(shadow,1); shadow.material.uniforms.uOp.value=out(sg(p,.02,.2))*(1-.6*xr);
+    [xray,tailX].forEach(function(m){K.plane(m,NX,X0,edge*.9);K.op(m,.15+.85*xr);});
     K.op(cord,io(sg(p,.34,.46)));
-    verts.forEach(function(v,j){var a=sg(p,.44+j*.0045,.49+j*.0045),e=out(a);K.op(v.g,e);v.g.scale.setScalar(.6+.4*e);});
+    verts.forEach(function(v,j){var e=out(sg(p,.44+j*.0045,.49+j*.0045));K.op(v.g,e);v.g.scale.setScalar(.6+.4*e);});
     var lf=io(sg(p,.54,.6)); lift.lam.position.set(.1*lf,.55*lf,0); lift.lam.rotation.x=-.6*lf; K.op(lift.lam,(1-lf)*out(sg(p,.44,.5)));
     var dn=io(sg(p,.6,.63)), upv=io(sg(p,.65,.7)), on=bump(p,.58,.6,.68,.72);
     imp.position.set(inj.x,inj.y+1.15+2.2*(1-dn)+1.6*upv,inj.z); K.op(imp,on);
@@ -1630,15 +1677,16 @@ function sceneRat(T,K,o){
     var s=RM?.35:(t*.55)%1; ring.scale.setScalar(.12+.5*s); K.op(ring,hv*(1-s)*.9);
     K.op(lead,out(sg(p,.6,.7))); S.labels[0].o=out(sg(p,.6,.7));
     dust.op(out(sg(p,0,.2)));
-    /* camera: lateral view of the whole animal, then over the back, then close on T7/T8 */
+    /* camera: the whole animal at three-quarters, over the back, then close on T7/T8 */
     var a=io(sg(p,.3,.5)), b=io(sg(p,.5,.66));
     tgt.lerpVectors(A,B,a).lerp(inj,b);
-    var hw=4.7+(3.2-4.7)*a+(2.1-3.2)*b, hh=2.1+(1.7-2.1)*a+(1.3-1.7)*b;
-    var az=.14+.4*a+.12*b+(RM?0:.02*Math.sin(t*.3)), el=.06+.34*a+.1*b;
+    var hw=4.3+(3.2-4.3)*a+(2.1-3.2)*b, hh=2.1+(1.7-2.1)*a+(1.3-1.7)*b;
+    var az=.42+.12*a+.06*b+(RM?0:.02*Math.sin(t*.3)), el=.16+.3*a+.12*b;
     var d=K.fit(cam,hh,hw); K.orbit(cam,tgt,d,az,el); S.focus=d; dust.focus(d);
   };
   return S;
 }
+sceneRat.pre=function(){return fetch("images/rat.bin").then(function(r){if(!r.ok)throw new Error("rat model "+r.status);return r.arrayBuffer();});};
 
 function sceneOsc(T,K,o){
   var R=K.rng(23), C=K.C, sg=K.sg, io=K.io, out=K.out, bump=K.bump, V3=function(x,y,z){return new T.Vector3(x,y,z||0);};
@@ -1847,86 +1895,109 @@ function scenePfas(T,K,o){
 
 function sceneKnee(T,K,o,X){
   var R=K.rng(41), C=K.C, sg=K.sg, io=K.io, out=K.out, V3=function(x,y,z){return new T.Vector3(x,y,z||0);};
-  var scene=new T.Scene(), cam=new T.PerspectiveCamera(28,1,.1,80), knee=new T.Group(); scene.add(knee);
-  var s=.0125, DEP=70;   /* svg units; the section is extruded into rounded volumes */
-  function P(x,y,z){return V3((x-200)*s,-(y-260)*s,z||0);}
-  var ldr=new X.SVG();
-  function shapes(d){return ldr.parse('<svg xmlns="http://www.w3.org/2000/svg"><path d="'+d+'"/></svg>').paths[0].toShapes(true);}
-  function curve(d,n){var q=ldr.parse('<svg xmlns="http://www.w3.org/2000/svg"><path d="'+d+'"/></svg>').paths[0].subPaths[0].getPoints(n);return q.map(function(v){return P(v.x,v.y);});}
-  function vol(d,dep,bev){var g=new T.ExtrudeGeometry(shapes(d),{depth:dep,bevelEnabled:true,bevelThickness:bev,bevelSize:bev*.55,bevelSegments:5,curveSegments:40});
-    g.translate(-200,-260,-dep/2);g.scale(s,-s,s);g.computeVertexNormals();return g;}
+  var scene=new T.Scene(), cam=new T.PerspectiveCamera(28,1,.1,80), slide=new T.Group(); scene.add(slide);
+  /* the knee outlines from the drawing (400 x 520 drawing units) */
   var D={femur:"M150,0 L150,170 C150,190 120,200 115,230 C110,260 140,275 170,268 C185,264 192,252 200,252 C208,252 215,264 230,268 C260,275 290,260 285,230 C280,200 250,190 250,170 L250,0 Z",
     tibia:"M150,520 L150,362 C140,346 110,332 110,304 C112,292 145,289 200,293 C255,289 288,292 290,304 C290,332 260,346 250,362 L250,520 Z",
     fibula:"M300,334 C314,330 320,350 312,374 L312,520 L298,520 L298,374 C292,352 290,338 300,334 Z",
     menL:"M112,284 C125,274 145,274 160,281 C145,286 125,288 112,284 Z", menR:"M288,284 C275,274 255,274 240,281 C255,286 275,288 288,284 Z",
     ost:"M285,216 C298,212 305,230 294,240 C289,238 286,228 285,216 Z",
     cartF:"M116,240 C116,262 145,274 170,268 C185,264 192,252 200,252 C208,252 215,264 230,268 C255,274 284,262 284,240",
-    cartT:"M113,298 C140,290 170,291 200,295 C230,291 260,290 287,298"};
-  var G={femur:vol(D.femur,DEP,16),tibia:vol(D.tibia,DEP,16),fibula:vol(D.fibula,DEP*.6,8),menL:vol(D.menL,DEP*.9,5),menR:vol(D.menR,DEP*.9,5),ost:vol(D.ost,DEP*.5,5)};
-  function band(d){var g=new T.TubeGeometry(new T.CatmullRomCurve3(curve(d,80)),120,.05,8,false);g.scale(1,1,(DEP*s*.5+.12)/.05);return g;}
-  G.cartF=band(D.cartF); G.cartT=band(D.cartT);
+    cartT:"M113,298 C140,290 170,291 200,295 C230,291 260,290 287,298",
+    caps:""};
+  (function(){var d="",n=72;for(var i=0;i<=n;i++){var a=i/n*Math.PI*2,r=1+.05*Math.sin(a*5+1)+.03*Math.sin(a*11),x=205+Math.cos(a)*122*r,y=286+Math.sin(a)*158*r;d+=(i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);}D.caps=d+"Z";})();
+  var P2={};Object.keys(D).forEach(function(k){P2[k]=new Path2D(D[k]);});
 
-  /* base anatomy: drafted glass volumes; the shafts fade out toward the top and bottom */
-  var FADE="uniform float uY;void main(){float fr=fres(2.2);float r=rev();float e=revE();float f=smoothstep(3.3,2.2,abs(vW.y-uY));\n"+
-    "gl_FragColor=vec4(mix(uCol,uRim,fr)+uEdgeCol*e*2.,uOp*f*((.035+fr*.9)*r+e));}";
-  var base=new T.Group(); knee.add(base);
-  var bone=function(g,c,r){var m=new T.Mesh(g,K.mat(FADE,{uCol:{value:C(c[0],c[1])},uRim:{value:C(r[0],r[1])},uY:{value:0},uEdgeCol:{value:C(0xc8d4f2)}}));base.add(m);return m;};
-  var INK=[[0x26355e,1],[0xc8d4f2,.9]];
-  var bF=bone(G.femur,INK[0],INK[1]), bT=bone(G.tibia,INK[0],INK[1]), bFi=bone(G.fibula,INK[0],INK[1]);
-  var soft=new T.Group(); knee.add(soft);
-  [G.menL,G.menR,G.ost].forEach(function(g){var m=new T.Mesh(g,K.mat(K.GLASS,{uCol:{value:C(0x26355e)},uRim:{value:C(0xc8d4f2,.9)},uEdgeCol:{value:C(0xc8d4f2)}}));soft.add(m);});
+  /* paint the section as an H&E stain, and the model's masks, on canvases laid out along the slide */
+  var KS=2.6, CW=Math.round(520*KS), CH=Math.round(400*KS);
+  function cv(){var c=document.createElement("canvas");c.width=CW;c.height=CH;var g=c.getContext("2d");g.setTransform(0,KS,KS,0,0,0);return [c,g];}   /* drawing y runs along the slide */
+  var he=cv(), hc=he[1];
+  function dots(path,n,r0,r1,col,squash){hc.save();hc.clip(path);for(var i=0;i<n;i++){var x=60+R()*280,y=R()*520,r=r0+R()*(r1-r0);hc.fillStyle=col;hc.beginPath();
+    hc.ellipse(x,y,r,r*(squash?(.4+R()*.6):1),R()*3.14,0,6.283);hc.fill();}hc.restore();}
+  /* joint capsule and muscle around the joint */
+  hc.fillStyle="rgba(220,156,202,.42)";hc.fill(P2.caps);
+  /* striated muscle bundles at the edges of the capsule */
+  hc.save();hc.clip(P2.caps);
+  for(var mb=0;mb<26;mb++){var side=mb%2?1:-1,mx=205+side*(92+R()*30),my=150+R()*280,rx=5+R()*7,ry=14+R()*20;
+    hc.fillStyle="rgba(201,96,164,"+(.45+R()*.3)+")";hc.beginPath();hc.ellipse(mx,my,rx,ry,(R()-.5)*.6,0,6.283);hc.fill();
+    hc.strokeStyle="rgba(150,60,130,.35)";hc.lineWidth=.3;for(var sl=-ry;sl<ry;sl+=1.6){hc.beginPath();hc.moveTo(mx-rx*.8,my+sl);hc.lineTo(mx+rx*.8,my+sl+.4);hc.stroke();}}
+  hc.restore();
+  hc.save();hc.clip(P2.caps);hc.lineWidth=.5;
+  for(var i=0;i<260;i++){var y=R()*520,x=70+R()*270,L=8+R()*26;hc.strokeStyle="rgba(186,96,160,"+(.18+R()*.25)+")";hc.beginPath();hc.moveTo(x,y);
+    hc.bezierCurveTo(x+L*.3,y+(R()-.5)*6,x+L*.7,y+(R()-.5)*6,x+L,y+(R()-.5)*4);hc.stroke();}
+  hc.restore();
+  dots(P2.caps,1400,.35,.8,"rgba(92,52,140,.7)");
+  /* bone: eosin pink, marrow islands, fat spaces, cortical rim, growth plate */
+  ["femur","tibia","fibula"].forEach(function(k){var p=P2[k];
+    hc.fillStyle="#c2569c";hc.fill(p);
+    dots(p,k==="fibula"?16:110,4,11,"rgba(94,53,148,.8)",true);
+    dots(p,k==="fibula"?30:420,1.2,4.5,"rgba(112,66,168,.78)",true);
+    dots(p,k==="fibula"?40:520,.4,2.6,"rgba(250,238,248,.92)");
+    dots(p,k==="fibula"?200:2600,.18,.45,"rgba(70,30,110,.75)");
+    dots(p,k==="fibula"?200:2200,.2,.5,"rgba(236,150,206,.6)");
+    hc.save();hc.clip(p);hc.lineWidth=3.2;hc.strokeStyle="#a23d86";hc.stroke(p);hc.restore();});
+  hc.save();hc.lineWidth=5;hc.strokeStyle="rgba(150,110,200,.85)";
+  hc.save();hc.clip(P2.femur);hc.beginPath();hc.moveTo(140,186);for(var x2=140;x2<=262;x2+=6)hc.lineTo(x2,184+Math.sin(x2*.21)*2.2);hc.stroke();hc.restore();
+  hc.save();hc.clip(P2.tibia);hc.beginPath();hc.moveTo(130,350);for(x2=130;x2<=272;x2+=6)hc.lineTo(x2,348+Math.sin(x2*.19)*2.2);hc.stroke();hc.restore();
+  hc.restore();
+  /* articular cartilage: pale lavender with chondrocytes */
+  ["cartF","cartT"].forEach(function(k){hc.lineCap="round";hc.lineWidth=8;hc.strokeStyle="#cdb6e6";hc.stroke(P2[k]);hc.lineWidth=1;hc.strokeStyle="rgba(150,110,200,.6)";hc.stroke(P2[k]);});
+  hc.save();hc.lineWidth=7;   /* canvas axes are swapped (drawing y runs along the slide), so test points as (y, x) */
+  for(i=0;i<240;i++){var x3=112+R()*176,y3=R()<.5?240+R()*34:288+R()*12;if(hc.isPointInStroke(P2.cartF,y3*KS,x3*KS)||hc.isPointInStroke(P2.cartT,y3*KS,x3*KS)){hc.fillStyle="rgba(105,70,165,.85)";hc.beginPath();hc.arc(x3,y3,.7,0,6.283);hc.fill();}}
+  hc.restore();
+  /* menisci (fibrous) and the osteophyte */
+  ["menL","menR"].forEach(function(k){hc.fillStyle="#dc84bd";hc.fill(P2[k]);hc.save();hc.clip(P2[k]);hc.lineWidth=.4;hc.strokeStyle="rgba(170,80,150,.6)";
+    for(var j=0;j<14;j++){hc.beginPath();hc.moveTo(100,276+j);hc.lineTo(300,276+j+(R()-.5));hc.stroke();}hc.restore();});
+  hc.fillStyle="#b95aa8";hc.fill(P2.ost);dots(P2.ost,10,.8,2.4,"rgba(110,62,160,.9)");
 
-  /* predicted masks: same volumes, filled in class colours, painted by the segmentation pass */
-  var MASK="uniform float uA;uniform float uDots;void main(){float fr=fres(1.5);float r=rev();float e=revE();float f=smoothstep(3.3,2.2,abs(vW.y));\n"+
-    "vec2 g=fract(vW.xy*9.)-.5;float dot_=smoothstep(.22,.12,length(g))*uDots;\n"+
-    "gl_FragColor=vec4(uCol*(.7+fr*.8+dot_*.8)+uEdgeCol*e*2.,uOp*f*((uA+fr*.35+dot_*.25)*r+e));}";
-  function mask(g,col,k,a,dots){return new T.Mesh(g,K.mat(MASK,{uCol:{value:C(col,k)},uA:{value:a},uDots:{value:dots||0}}));}
-  /* masks are thin sheets on the section face: what a segmentation model actually outputs */
-  var ZF=DEP*s*.5+.08;
-  function sheetG(d){var g=vol(d,5,1.2);g.translate(0,0,ZF);return g;}
-  function bandG(d){var g=new T.TubeGeometry(new T.CatmullRomCurve3(curve(d,80)),120,.05,8,false);g.scale(1,1,.6);g.translate(0,0,ZF);return g;}
-  var L={bone:new T.Group(),cart:new T.Group(),men:new T.Group(),ost:new T.Group()};
-  L.bone.add(mask(sheetG(D.femur),0x5b8cff,.55,.07,.55),mask(sheetG(D.tibia),0x5b8cff,.55,.07,.55),mask(sheetG(D.fibula),0x5b8cff,.6,.1,0));
-  L.cart.add(mask(bandG(D.cartF),0x34e89e,.8,.3),mask(bandG(D.cartT),0x34e89e,.8,.3));
-  L.men.add(mask(sheetG(D.menL),0xff5cc8,.8,.28),mask(sheetG(D.menR),0xff5cc8,.8,.28));
-  L.ost.add(mask(sheetG(D.ost),0xffd166,.85,.32));
-  var layers=[L.bone,L.cart,L.men,L.ost], zoff=[0,.32,.64,.96];
-  layers.forEach(function(l){knee.add(l);});
-  /* slide grid behind the section, revealed with the masks */
-  var gp=[];for(var x=-2.6;x<=2.61;x+=.15)gp.push(V3(x,-3.3,-.75),V3(x,3.3,-.75));for(var y=-3.3;y<=3.31;y+=.15)gp.push(V3(-2.6,y,-.75),V3(2.6,y,-.75));
-  var grid=new T.LineSegments(new T.BufferGeometry().setFromPoints(gp),K.lineMat(0x5b8cff,.12)); knee.add(grid);
-  /* the segmentation light sheet */
-  var sheet=new T.Group(); knee.add(sheet);
-  var shG=new T.PlaneGeometry(5.6,.55); shG.translate(0,.275,0);
-  sheet.add(new T.Mesh(shG,K.mat("void main(){gl_FragColor=vec4(uCol,uOp*pow(1.-vUv.y,2.)*.22);}",{uCol:{value:C(0x34e89e)}})));
-  sheet.add(K.line([V3(-2.8,0,.9),V3(2.8,0,.9)],0x34e89e,2), K.line([V3(-2.8,0,-.9),V3(2.8,0,-.9)],0x34e89e,.8));
-  /* labels with leader lines; they ride on their layer when the classes separate */
-  var lead=[[L.cart,116,246,66,214,"Cartilage",20,208,0],[L.men,286,282,352,256,"Meniscus",392,250,-100],[L.ost,300,224,350,206,"Osteophyte",392,200,-100],[L.bone,128,318,70,352,"Bone",20,366,0]];
-  var leaders=lead.map(function(q){var l=K.line([P(q[1],q[2],ZF),P(q[3],q[4],ZF)],0x8a94ac,.6);q[0].add(l);return l;});
-  var dust=K.dust(scene,PH?40:80,R,[7,5,-9,2]);
-  var S={scene:scene,cam:cam,bloom:[.36,.3,.84],dof:[.0016,.0065],focus:14,
-    labels:lead.map(function(q){return {text:q[5],a:P(q[6],q[7]-4,ZF),layer:q[0],ax:q[8],ay:-50,cls:"lbl"};}).concat([
-      {text:"femur",a:P(200,110,ZF),layer:L.bone},{text:"tibia",a:P(200,440,ZF),layer:L.bone}])};
-  var NXr=new T.Vector3(-1,0,0), NY=new T.Vector3(0,1,0), tgt=V3(0,0,0);
+  var mk=cv(), mc=mk[1];
+  function mfill(p,fill,line,w){mc.fillStyle=fill;mc.fill(p);mc.lineWidth=w||1.4;mc.strokeStyle=line;mc.stroke(p);}
+  ["femur","tibia","fibula"].forEach(function(k){mfill(P2[k],"rgba(91,140,255,.8)","rgba(178,204,255,1)");});
+  ["cartF","cartT"].forEach(function(k){mc.lineCap="round";mc.lineWidth=9;mc.strokeStyle="rgba(52,232,158,.82)";mc.stroke(P2[k]);});
+  ["menL","menR"].forEach(function(k){mfill(P2[k],"rgba(255,92,200,.75)","rgba(255,170,226,1)");});
+  mfill(P2.ost,"rgba(255,209,102,.85)","rgba(255,232,170,1)");
+  function tex(c){var t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;t.anisotropy=4;return t;}
+
+  /* the slide: glass, frosted label end, coverslip, and the stained section between them */
+  var SW=7.6, SD=5.0, TW=5.62, TD=TW*CH/CW, TX=.75;
+  var glass=K.solid(new T.BoxGeometry(SW,.08,SD),[0x2a3550,.6],[0xc8d4f2,.7],[0xc8d4f2,.42]); slide.add(glass);
+  var frost=new T.Mesh(new T.PlaneGeometry(1.42,SD-.12),K.mat("void main(){float n=fract(sin(dot(floor(vUv*180.),vec2(12.9,78.2)))*43758.5);gl_FragColor=vec4(uCol,uOp*(.13+n*.05));}",{uCol:{value:C(0xc8d4f2)}}));
+  frost.rotation.x=-Math.PI/2; frost.position.set(-SW/2+.76,.045,0); slide.add(frost);
+  var bars=[];for(i=0;i<16;i++){var bx=-SW/2+.32+i*.05+(R()<.4?.02:0);bars.push(V3(bx,.047,1.2),V3(bx,.047,1.2+(R()<.3?.55:.38)));}
+  var bar=new T.LineSegments(new T.BufferGeometry().setFromPoints(bars),K.lineMat(0xc8d4f2,.4)); slide.add(bar);
+  var cover=K.edges(new T.BoxGeometry(TW+.3,.012,TD+.3),0xc8d4f2,.35); cover.position.set(TX,.055,0); slide.add(cover);
+  var tissue=new T.Mesh(new T.PlaneGeometry(TW,TD),new T.ShaderMaterial({transparent:true,depthWrite:false,
+    uniforms:{tHE:{value:tex(he[0])},tMask:{value:tex(mk[0])},uScan:{value:-1},uMask:{value:0},uOp:{value:0}},
+    vertexShader:"varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}",
+    fragmentShader:"uniform sampler2D tHE;uniform sampler2D tMask;uniform float uScan;uniform float uMask;uniform float uOp;varying vec2 vUv;\n"+
+      "void main(){vec4 h=texture2D(tHE,vUv);vec4 m=texture2D(tMask,vUv);float rev=smoothstep(uScan,uScan-.006,vUv.x)*uMask;\n"+
+      "vec3 c=h.rgb*.82;float a=h.a;c*=1.-.45*m.a*rev;c=mix(c,m.rgb,m.a*rev*.9);a=max(a,m.a*rev);\n"+
+      "float d=uScan-vUv.x, on=step(0.,uScan)*step(uScan,1.);float line=exp(-d*d/.000012)*on;\n"+
+      "float band=smoothstep(.07,0.,d)*step(0.,d)*on;vec2 g=fract(vUv*vec2(28.,21.6));float grid=(step(g.x,.05)+step(g.y,.06))*band*.3;\n"+
+      "c+=vec3(.25,.95,.65)*(line*1.4+grid);a=max(a,max(line,grid*.6));gl_FragColor=vec4(c,a*uOp);}"}));
+  tissue.rotation.x=-Math.PI/2; tissue.position.set(TX,.044,0); slide.add(tissue);
+  /* a drawing point (x, y) to its place on the slide */
+  function TP(sx,sy,h){return V3(TX+(sy*KS/CW-.5)*TW,h==null?.05:h,(sx*KS/CH-.5)*TD);}
+
+  /* labels with leader lines, as in the drawing */
+  var lead=[[116,246,70,214,"Cartilage"],[286,282,352,258,"Meniscus"],[300,224,352,206,"Osteophyte"],[128,318,72,352,"Bone"]];
+  var leaders=lead.map(function(q){var l=K.line([TP(q[0],q[1],.06),TP(q[2],q[3],.06)],0xe6eaf2,.75);slide.add(l);return l;});
+  var dust=K.dust(scene,PH?40:70,R,[7,4,-9,2]);
+  var S={scene:scene,cam:cam,bloom:[.3,.3,.9],dof:[.0014,.006],focus:14,
+    labels:lead.map(function(q){return {text:q[4],w:TP(q[2],q[3],.06),cls:"lbl",ay:-140};}).concat([{text:"femur",w:TP(200,96),cls:"lbl"},{text:"tibia",w:TP(200,456),cls:"lbl"}])};
+  var tgt=V3(TX*.6,0,0);
 
   S.update=function(p,t){
-    /* outlines draw in left to right, the soft tissue a beat later */
-    var dr=io(sg(p,0,.26)), X=-2.9+5.8*dr; K.plane(base,NXr,-X,dr<1?.8:0); K.op(base,1);
-    var ds=io(sg(p,.12,.3)), X2=-2.9+5.8*ds; K.plane(soft,NXr,-X2,ds<1?.8:0); K.op(soft,ds>0?1:0);
-    /* the segmentation pass paints the masks from the top of the slide down */
-    var sc=io(sg(p,.3,.72)), Y=3.4-6.8*sc, on=sg(p,.28,.31)*(1-sg(p,.72,.76));
-    layers.forEach(function(l){K.op(l,sc>0?1:0);K.plane(l,NY,Y,on);});
-    K.op(grid,sc>0?1:0); K.plane(grid,NY,Y,on);
-    sheet.position.y=Y; K.op(sheet,on);
-    /* masks stay seated on the section; the outlines step back so the classes read */
-    var ex=io(sg(p,.72,.86));
-    base.children.forEach(function(m){m.material.uniforms.uOp.value=1-.35*ex;});
-    var lo=out(sg(p,.72,.84));
-    leaders.forEach(function(l){K.op(l,lo);});
-    S.labels.forEach(function(Lb){Lb.w.copy(Lb.a);Lb.w.z+=Lb.layer.position.z;Lb.o=lo;});
+    var inn=out(sg(p,0,.16)); K.op(glass,inn); K.op(frost,inn); K.op(bar,inn); K.op(cover,inn*.9);
+    tissue.material.uniforms.uOp.value=out(sg(p,.04,.22));
+    /* the segmentation pass runs along the slide; the masks land behind it */
+    var sc=io(sg(p,.3,.72)); tissue.material.uniforms.uScan.value=p<.29?-1:p>.74?2:sc*1.01; tissue.material.uniforms.uMask.value=sg(p,.29,.31);
+    var lo=out(sg(p,.72,.84)); leaders.forEach(function(l){K.op(l,lo);}); S.labels.forEach(function(L){L.o=lo;});
     dust.op(out(sg(p,0,.2)));
-    var az=.12+(RM?0:.015*Math.sin(t*.27)), el=.08;   /* a steady, near front-on view */
-    var d=K.fit(cam,3.2,3.45);   /* room for the side labels */ K.orbit(cam,tgt,d,az,el); S.focus=d; dust.focus(d);
+    /* camera: down onto the slide; portrait screens see it turned so the section runs top to bottom */
+    var settle=io(sg(p,0,.3)), push=io(sg(p,.3,.6));   /* seen with the section running top to bottom, femur above tibia */
+    var hw=3.05, hh=4.35, az=Math.PI/2+.1-.08*settle+(RM?0:.012*Math.sin(t*.25)), el=.82+.32*settle+.06*push;
+    var d=K.fit(cam,hh,hw)*(1-.06*push); K.orbit(cam,tgt,d,az,el); S.focus=d; dust.focus(d);
   };
   return S;
 }
@@ -1988,7 +2059,7 @@ function sceneWrist(T,K,o){
 
   var dust=K.dust(scene,PH?40:80,R,[7,5,-9,3]);
   var S={scene:scene,cam:cam,bloom:[.42,.32,.8],dof:[.0016,.0065],focus:12,labels:[
-    {text:"radius",w:P(150,268,ZF)},{text:"ulna",w:P(270,264,ZF)},
+    {text:"radius",w:P(150,268,ZF)},{text:"ulna",w:P(270,264,ZF)},{text:"median nerve",w:P(205,176,ZF),ax:-50,ay:0},{text:"radial artery",w:P(163,128,ZF),ax:-100,ay:-50},
     {text:"LED",w:P(170,46,.9),ay:-100},{text:"photodiode",w:P(229,46,.9),ay:-100},
     {text:"pulse waveform",w:V3(PX,PY+PHt+.08,PZ),ax:0,ay:-100},{text:"72 bpm",w:V3(PX+PW,PY+PHt+.08,PZ),ax:-100,ay:-100}]};
   var tgt=new T.Vector3(), TA=V3(0,.05,0), TB=V3(0,-.6,1.2);
@@ -1997,13 +2068,13 @@ function sceneWrist(T,K,o){
     K.op(skin,out(sg(p,0,.2))); K.op(fascia,out(sg(p,.05,.22))*.8);
     arm.children.forEach(function(c){if(c.userData.inner)K.op(c,out(sg(p,.1,.24)));});
     [rad,radM,uln,ulnM,nerve].forEach(function(c){K.op(c,out(sg(p,.1,.24)));});
-    S.labels[0].o=S.labels[1].o=out(sg(p,.1,.24));
+    S.labels[0].o=S.labels[1].o=S.labels[2].o=out(sg(p,.1,.24));S.labels[3].o=out(sg(p,.14,.26));
     var bv=out(sg(p,.14,.26)), beat=ppg(RM?1.2:t);
     K.op(artery,bv); K.op(vein,bv*.8); artery.scale.set(1+.28*beat,1+.28*beat,1);
     K.op(band,io(sg(p,.22,.32))); K.op(mod,out(sg(p,.24,.34))); K.op(led,out(sg(p,.24,.34))); K.op(pd,out(sg(p,.24,.34)));
-    S.labels[2].o=S.labels[3].o=out(sg(p,.24,.34));
+    S.labels[4].o=S.labels[5].o=out(sg(p,.24,.34));
     K.op(light,out(sg(p,.38,.48))*(.75+.25*beat));
-    var pv=out(sg(p,.46,.54)); K.op(panel,pv); S.labels[4].o=S.labels[5].o=pv;
+    var pv=out(sg(p,.46,.54)); K.op(panel,pv); S.labels[6].o=S.labels[7].o=pv;
     /* the live trace: the last three seconds of pulse, revealed left to right */
     var pa=wave.geometry.attributes.position, now=RM?1.2:t;
     for(var i=0;i<=NW;i++){wx[i]=PX+i/NW*PW; wy[i]=PY+.22+ppg(now-(NW-i)/NW*3)*(PHt-.55);}
@@ -2115,7 +2186,7 @@ var SCENES={"fig-spine":sceneSpine,"fig-rat":sceneRat,"fig-osc":sceneOsc,"fig-pf
     var build=SCENES[o.svg.id]; if(!build) return;
     var io=new IntersectionObserver(function(es){
       if(!es[0].isIntersecting) return; io.disconnect();
-      glMods().then(function(X){mount3D(o,build,X);}).catch(function(err){console.warn("3D plate unavailable, using the drawing instead.",err);});
+      Promise.all([glMods(),build.pre?build.pre():null]).then(function(r){mount3D(o,build,r[0],r[1]);}).catch(function(err){console.warn("3D plate unavailable, using the drawing instead.",err);});
     },{rootMargin:"90% 0px"});
     io.observe(o.pl);
   });

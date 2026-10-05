@@ -32,6 +32,7 @@ sceneOsc, scenePfas, sceneKnee, sceneWrist and sceneScalpel. The 3D code (three.
 the smooth scrolling (GSAP, Lenis) load from cdn.jsdelivr.net, so the site needs an
 internet connection to show them. The line drawing inside each <svg> is the backup: it
 shows if a browser can't run 3D, and also when you open index.html offline.
+images/rat.bin is the 3D rat model used by the animal-model animation; keep it in the images folder.
 
 FILES
 index.html      the whole site
