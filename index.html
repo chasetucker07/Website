@@ -1211,7 +1211,7 @@ function kit3D(T){
   K.HEAD="uniform float uT;uniform float uOp;uniform vec3 uCol;uniform vec3 uRim;uniform vec3 uCav;uniform float uInj;uniform float uHeal;uniform float uSig;\n"+
     "uniform vec4 uPl;uniform float uEdge;uniform vec3 uEdgeCol;\n"+
     "varying vec3 vP;varying vec3 vN;varying vec3 vV;varying vec3 vW;varying float vR;varying float vCut;varying vec2 vUv;\n"+
-    "float fres(float k){return pow(1.-abs(dot(normalize(vN),normalize(vV))),k);}\n"+
+    "float fres(float k){vec3 n=vN;float l=length(n);n=l>1e-5?n/l:vec3(0.,0.,1.);return pow(clamp(1.-abs(dot(n,normalize(vV))),0.,1.),k);}\n"+   /* clamped: a hair below zero makes pow() NaN on some GPUs, and bloom spreads one NaN pixel across the frame */
     "float cav(float s){vec3 q=vP/(uCav*s);return dot(q,q);}\n"+
     "float ends(){return smoothstep(5.,3.1,abs(vP.y));}\n"+
     "float rev(){return smoothstep(-.012,.012,dot(vW,uPl.xyz)-uPl.w);}\n"+
@@ -1316,7 +1316,7 @@ function glHost(X){
   H.grade=new X.SP({uniforms:{tDiffuse:{value:null},uT:{value:0},uRes:{value:new T.Vector2(1,1)},uField:{value:new T.Vector3(3/255,6/255,13/255)}},
     vertexShader:"varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}",
     fragmentShader:"uniform sampler2D tDiffuse;uniform float uT;uniform vec2 uRes;uniform vec3 uField;varying vec2 vUv;\n"+
-      "void main(){vec3 c=texture2D(tDiffuse,vUv).rgb;vec2 q=(vUv-.5)*vec2(uRes.x/uRes.y,1.);c*=mix(.6,1.,smoothstep(1.,.25,length(q)));\n"+
+      "void main(){vec3 c=texture2D(tDiffuse,vUv).rgb;if(c.r!=c.r||c.g!=c.g||c.b!=c.b)c=vec3(0.);c=max(c,vec3(0.));vec2 q=(vUv-.5)*vec2(uRes.x/uRes.y,1.);c*=mix(.6,1.,smoothstep(1.,.25,length(q)));\n"+
       "float l=dot(c,vec3(.3,.6,.1));float g=fract(sin(dot(floor(vUv*uRes)+fract(uT)*91.,vec2(12.9898,78.233)))*43758.5453)-.5;\n"+
       "gl_FragColor=vec4(uField+c+g*(.012+.05*l),1.);}"});
   H.comp.addPass(H.grade);
@@ -1816,83 +1816,6 @@ function sceneOsc(T,K,o){
   return S;
 }
 
-function scenePfas(T,K,o){
-  var R=K.rng(31), C=K.C, sg=K.sg, io=K.io, out=K.out, V3=function(x,y,z){return new T.Vector3(x,y,z||0);};
-  var scene=new T.Scene(), cam=new T.PerspectiveCamera(28,1,.1,80), mol=new T.Group(); scene.add(mol);
-
-  /* PFOS, C8F17SO3H: a perfluorinated chain (with its slight helical twist) ending in a sulfonic acid group */
-  var EL={C:[0x8a94ac,.85,.3],F:[0x34e89e,.95,.25],S:[0xffd166,1,.4],O:[0xff5cc8,.95,.28],H:[0xe6eaf2,.9,.16]};
-  var mats={}; Object.keys(EL).forEach(function(k){mats[k]=K.mat(K.LIT,{uCol:{value:C(EL[k][0],EL[k][1]*.75)},uRim:{value:C(EL[k][0],EL[k][1]*1.35)}});});
-  var sph=new T.SphereGeometry(1,28,20), cyl=new T.CylinderGeometry(.045,.045,1,10,1,true);
-  var bondM=K.mat(K.GLASS,{uCol:{value:C(0x8a94ac,.6)},uRim:{value:C(0xe6eaf2,.9)}});
-  var atoms=[], bonds=[];
-  function tw(v,i){var a=i*.21,c=Math.cos(a),s=Math.sin(a);return V3(v.x,v.y*c-v.z*s,v.y*s+v.z*c);}
-  function atom(el,pos,a,b){var m=new T.Mesh(sph,mats[el]);m.position.copy(pos);mol.add(m);var A={m:m,r:EL[el][2],a:a,b:b,el:el};atoms.push(A);return A;}
-  function bond(A,B,a,b){var m=new T.Mesh(cyl,bondM);mol.add(m);bonds.push({m:m,A:A,B:B,a:a,b:b});}
-  var Cs=[];
-  for(var i=0;i<8;i++)Cs.push(atom("C",tw(V3(i*.8,i%2?.26:-.26,0),i),i*.03,i*.03+.05));
-  for(i=0;i<7;i++)bond(Cs[i],Cs[i+1],i*.03+.02,i*.03+.07);
-  var Fs=[];
-  for(i=0;i<8;i++){
-    var a=.06+i*.02,b=.16+i*.02,sgn=i%2?1:-1,base=V3(i*.8,i%2?.26:-.26,0);
-    var offs=i===0?[V3(-.62,-.08,0),V3(.08,-.4,.56),V3(.08,-.4,-.56)]:[V3(0,sgn*.36,.6),V3(0,sgn*.36,-.6)];
-    offs.forEach(function(d){var F=atom("F",tw(base.clone().add(d),i),b,b+.05);bond(Cs[i],F,a,b);Fs.push(F);});
-  }
-  var Sp=V3(6.4,-.26,0), Sa=atom("S",tw(Sp,8),.24,.3); bond(Cs[7],Sa,.22,.26);
-  var dirs=[V3(.2,-.95,.25),V3(.55,.35,.75),V3(.75,.15,-.65)], Os=dirs.map(function(d){var Ob=atom("O",tw(Sp.clone().addScaledVector(d.normalize(),.66),8),.3,.35);bond(Sa,Ob,.26,.32);return Ob;});
-  var Hh=atom("H",Os[2].m.position.clone().add(V3(.34,-.2,-.1)),.3,.35); bond(Os[2],Hh,.3,.34);
-  var cen=new T.Vector3(); atoms.forEach(function(A){cen.add(A.m.position);}); cen.divideScalar(atoms.length);
-  atoms.forEach(function(A){A.m.position.sub(cen);});
-  var UP=new T.Vector3(0,1,0), D=new T.Vector3();
-
-  /* the chromatogram: axes, a floor grid for depth, a trace that draws left to right with a fill beneath */
-  var plot=new T.Group(); scene.add(plot);
-  var X0=-4.15, X1=4.15, Y0=-1.9, peaks=[[82,.1,6],[130,.32,5],[176,.92,4.5],[206,.28,4],[252,.62,5],[304,.18,6]], pts=[];
-  for(var px=42;px<=360;px+=1){var s=0;peaks.forEach(function(q){s+=q[1]*Math.exp(-Math.pow((px-q[0])/q[2],2));});pts.push(V3(X0+(px-42)/318*(X1-X0),Y0+2.35*s,0));}
-  var trace=K.drawn(new T.CatmullRomCurve3(pts),.022,0xff5cc8,1.5,600); plot.add(trace);
-  var cg=new T.BufferGeometry(),cp=[],cu=[],ci=[];
-  pts.forEach(function(q,j){cp.push(q.x,q.y,0,q.x,Y0,0);var u=j/(pts.length-1);cu.push(u,0,u,1);if(j){var k=j*2;ci.push(k-2,k-1,k,k-1,k+1,k);}});
-  cg.setAttribute("position",new T.Float32BufferAttribute(cp,3));cg.setAttribute("uv",new T.Float32BufferAttribute(cu,2));cg.setIndex(ci);
-  var curtain=new T.Mesh(cg,K.mat("uniform float uDraw;void main(){float vis=smoothstep(uDraw,uDraw-.01,vUv.x);gl_FragColor=vec4(uCol,uOp*vis*pow(1.-vUv.y,1.6)*.32);}",{uCol:{value:C(0xff5cc8,.9)},uDraw:{value:0}}));
-  plot.add(curtain);
-  var axes=new T.Group(); plot.add(axes);
-  axes.add(K.drawn(new T.LineCurve3(V3(X0-.05,Y0,0),V3(X1+.1,Y0,0)),.009,0x8a94ac,.9,8));
-  axes.add(K.drawn(new T.LineCurve3(V3(X0-.05,Y0,0),V3(X0-.05,Y0+2.5,0)),.009,0x8a94ac,.9,8));
-  var gp=[];for(var gx=-4;gx<=4.01;gx+=.5)gp.push(V3(gx,Y0-.002,.05),V3(gx,Y0-.002,-3));for(var gz=0;gz>=-3;gz-=.5)gp.push(V3(X0,Y0-.002,gz),V3(X1,Y0-.002,gz));
-  var grid=new T.LineSegments(new T.BufferGeometry().setFromPoints(gp),K.lineMat(0x5b8cff,.18)); plot.add(grid);
-
-  var dust=K.dust(scene,PH?50:90,R,[9,5,-10,2]);
-  var S={scene:scene,cam:cam,bloom:[.4,.3,.8],dof:[.002,.008],focus:14,labels:[
-    {text:"F",w:new T.Vector3()},{text:"S",w:new T.Vector3()},{text:"O",w:new T.Vector3()},{text:"OH",w:new T.Vector3()},
-    {text:"retention time",w:V3(X1+.1,Y0-.18,0),ax:-100,ay:0}]};
-  S.labels.forEach(function(L){if(L.text.length<3)L.cls="atom";});
-  var lab=[Fs[0],Sa,Os[0],Os[2]], off=[V3(-.32,0,0),V3(0,.46,0),V3(0,-.4,0),V3(.38,.1,0)];
-  var tgt=new T.Vector3(), TA=V3(0,0,0), TB=V3(0,-.7,0), MB=V3(0,1.55,-2.6);
-
-  S.update=function(p,t){
-    atoms.forEach(function(A){var e=out(sg(p,A.a,A.b));A.m.scale.setScalar(Math.max(.001,A.r*e));A.m.visible=e>0;});
-    bonds.forEach(function(B){var e=io(sg(p,B.a,B.b));var a=B.A.m.position,b=B.B.m.position;D.subVectors(b,a);var L=D.length();
-      B.m.visible=e>0;B.m.scale.set(1,Math.max(.001,L*e),1);B.m.position.copy(a).addScaledVector(D,e*.5);B.m.quaternion.setFromUnitVectors(UP,D.normalize());});
-    Object.keys(mats).forEach(function(k){mats[k].uniforms.uOp.value=1;}); bondM.uniforms.uOp.value=.9;
-    /* the molecule turns about its chain; then it lifts away and the focus racks to the chromatogram */
-    var m=io(sg(p,.34,.52));
-    mol.rotation.x=-.3+p*2.2+(RM?0:t*.04); mol.rotation.y=.12*Math.sin(p*3);
-    mol.position.lerpVectors(TA,MB,m); mol.scale.setScalar(1-.38*m);
-    K.op(axes,io(sg(p,.36,.44))); axes.children.forEach(function(c){c.material.uniforms.uOp.value=io(sg(p,.36,.44));});
-    K.op(grid,.9*io(sg(p,.36,.46)));
-    var dr=sg(p,.42,.8); trace.material.uniforms.uOp.value=dr; trace.visible=dr>0;
-    curtain.material.uniforms.uDraw.value=dr*1.02; K.op(curtain,dr>0?1:0);
-    S.labels[4].o=out(sg(p,.5,.6));
-    for(var j=0;j<4;j++){var A=lab[j];S.labels[j].w.copy(A.m.position).add(off[j]);mol.localToWorld(S.labels[j].w);S.labels[j].o=out(sg(p,A.b,A.b+.05))*(1-sg(p,.34,.42));}
-    dust.op(out(sg(p,0,.2)));
-    tgt.lerpVectors(TA,TB,m);
-    var hw=5.0+.1*m, hh=1.9+.6*m, az=.08+.22*m+(RM?0:.02*Math.sin(t*.25)), el=.1+.14*m;
-    var d=K.fit(cam,hh,hw); K.orbit(cam,tgt,d,az,el);
-    var fm=cam.position.distanceTo(mol.position), fp=cam.position.distanceTo(TB); S.focus=fm+(fp-fm)*m; dust.focus(S.focus);   /* rack focus */
-  };
-  return S;
-}
-
 function sceneKnee(T,K,o,X){
   var R=K.rng(41), C=K.C, sg=K.sg, io=K.io, out=K.out, V3=function(x,y,z){return new T.Vector3(x,y,z||0);};
   var scene=new T.Scene(), cam=new T.PerspectiveCamera(28,1,.1,80), slide=new T.Group(); scene.add(slide);
@@ -2179,7 +2102,7 @@ function sceneScalpel(T,K,o,X){
   return S;
 }
 
-var SCENES={"fig-spine":sceneSpine,"fig-rat":sceneRat,"fig-osc":sceneOsc,"fig-pfas":scenePfas,"fig-knee":sceneKnee,"fig-wrist":sceneWrist,"fig-scalpel":sceneScalpel};
+var SCENES={"fig-spine":sceneSpine,"fig-rat":sceneRat,"fig-osc":sceneOsc,"fig-knee":sceneKnee,"fig-wrist":sceneWrist,"fig-scalpel":sceneScalpel};
 (function(){
   if(!GL3.ok) return;                   /* no WebGL2: the SVG plates stay */
   plates.forEach(function(o){
